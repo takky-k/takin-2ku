@@ -612,16 +612,14 @@ header {
   min-height: 44px;
 }
 .evergreen-notes {
-  position: sticky;
-  top: 8px;
-  z-index: 4;
+  position: static;
   background: var(--field);
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   padding: 12px 14px;
   margin: 16px 0;
-  max-height: 190px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   box-shadow: 0 8px 12px #0002;
@@ -734,7 +732,7 @@ header {
     margin-left: 0;
   }
   .evergreen-notes {
-    max-height: 170px;
+    max-height: none;
   }
 }
 .today-date {
@@ -1015,6 +1013,92 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .menu-card .actions .button {
   min-width: 60px;
+}
+.compact-sheet {
+  margin: 8px 0;
+}
+.compact-sheet .set-column {
+  width: 10%;
+}
+.compact-sheet .delete-column {
+  width: 50px;
+}
+.compact-sheet th {
+  font-size: 11px;
+  padding: 8px 2px;
+  white-space: nowrap;
+}
+.compact-sheet th[scope="row"] {
+  font-size: 13px;
+  text-align: center;
+  font-weight: 500;
+}
+.compact-sheet td {
+  padding: 5px 3px;
+}
+.compact-sheet input:not([type="checkbox"]) {
+  min-height: 44px;
+  border-radius: 3px;
+  padding: 5px 3px;
+}
+.compact-sheet .delete-last {
+  border: 0;
+  background: transparent;
+  min-width: 44px;
+  min-height: 44px;
+  width: 100%;
+  padding: 0;
+  font-size: 22px;
+  color: var(--muted);
+}
+.compact-sheet .set-detail-row td {
+  padding: 0 4px 8px;
+}
+.set-detail-row details summary {
+  font-size: 10px;
+  min-height: 32px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.set-detail-row textarea {
+  min-height: 65px;
+  font-size: 14px;
+}
+.row-reference {
+  font-size: 10px;
+  color: var(--muted);
+  display: block;
+  margin: 3px 0;
+}
+.exercise-card {
+  padding: 14px;
+}
+.exercise-card .section-heading {
+  margin-bottom: 8px;
+}
+.exercise-card h2 {
+  font-size: 17px;
+}
+.exercise-card .evergreen-notes {
+  padding: 10px;
+  margin: 12px 0;
+}
+.sleep-reading b {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+}
+.sleep-connection summary {
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+  padding-top: 12px;
+}
+.sleep-connection textarea {
+  font-size: 12px;
+  min-height: 110px;
 }
 @media (min-width: 650px) {
   .soreness-scales {

@@ -53,16 +53,23 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
     }),
   ).toBeVisible();
   await expect(card.getByText(/胸にバーを付ける必要はない/)).toBeVisible();
-  await expect(card.getByRole("columnheader")).toHaveCount(4);
+  await expect(card.getByRole("columnheader")).toHaveCount(5);
   await expect(card.getByRole("combobox")).toHaveCount(0);
+  await expect(card.getByRole("checkbox")).toHaveCount(0);
+  await expect(card.getByLabel(/セット.*の操作/)).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /最終セット/ })).toHaveCount(1);
+  expect(
+    await card
+      .locator(".evergreen-notes")
+      .evaluate((e) => getComputedStyle(e).position),
+  ).toBe("static");
   await expect(
     card.getByRole("button", { name: "0", exact: true }),
   ).toHaveCount(0);
   await card.getByLabel("セット1のRIR", { exact: true }).fill("0");
   await card.getByLabel("セット1のRIR", { exact: true }).blur();
-  await card
-    .getByRole("checkbox", { name: "セット1を完了", exact: true })
-    .click();
+  await card.getByLabel("セット1の回数", { exact: true }).fill("8");
+  await card.getByLabel("セット1の回数", { exact: true }).blur();
   await page.reload();
   await expect(
     page
@@ -70,9 +77,8 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
       .first()
       .getByLabel("セット1のRIR", { exact: true }),
   ).toHaveValue("0");
-  await card
-    .getByRole("checkbox", { name: "セット2を完了", exact: true })
-    .click();
+  await card.getByLabel("セット2の回数", { exact: true }).fill("8");
+  await card.getByLabel("セット2の回数", { exact: true }).blur();
   await page.reload();
   await expect(card.getByLabel("セット2のRIR", { exact: true })).toHaveValue(
     "",
@@ -83,11 +89,9 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await expect(card.getByLabel("セット3の重量", { exact: true })).toHaveValue(
     "85",
   );
-  await card.getByLabel("セット3の操作", { exact: true }).click();
   await card
-    .getByRole("button", { name: "セット3を削除", exact: true })
+    .getByRole("button", { name: "最終セット3を削除", exact: true })
     .click();
-  await card.getByRole("button", { name: "削除を確定", exact: true }).click();
   await expect(card.getByLabel("セット3の重量", { exact: true })).toHaveCount(
     0,
   );
@@ -97,6 +101,21 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await expect(card.getByLabel("セット3の重量", { exact: true })).toHaveValue(
     "85",
   );
+  await card.getByRole("button", { name: "セットを追加", exact: true }).click();
+  await expect(card.getByLabel("セット4の重量", { exact: true })).toHaveValue(
+    "85",
+  );
+  await expect(card.getByLabel("セット4の回数", { exact: true })).toHaveValue(
+    "",
+  );
+  await expect(card.getByLabel("セット4のRIR", { exact: true })).toHaveValue(
+    "",
+  );
+  await expect(card.getByRole("button", { name: /最終セット/ })).toHaveCount(1);
+  await card
+    .getByRole("button", { name: "最終セット4を削除", exact: true })
+    .click();
+  await card.getByLabel("セット3の回数", { exact: true }).fill("7");
   await card.getByLabel("セット3のRIR", { exact: true }).fill("1~2");
   await card.getByLabel("セット3のRIR", { exact: true }).blur();
   for (const label of ["30秒", "1分", "1分30秒", "2分", "2分30秒"])
@@ -110,6 +129,12 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
     ),
   ).toBe(true);
   await finish(page);
+  await expect(
+    page.getByRole("heading", { name: "トレーニング後の体重", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("体重 (lb)", { exact: true }).fill("160");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "履歴", exact: true }).click();
   await expect(page.getByRole("button", { name: /A｜/ })).toHaveCount(1);
   await context.setOffline(false);
@@ -136,6 +161,10 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
   await expect(
     page.getByRole("heading", { name: "カスタム上半身" }),
   ).toBeVisible();
+  await expect(
+    page.getByText("痛み・体調不良がある", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel(/体重/)).toHaveCount(0);
   const mood = page.getByRole("slider", { name: "気分", exact: true }),
     fatigue = page.getByRole("slider", { name: "全身の筋肉疲労", exact: true });
   await expect(mood).toHaveAttribute("aria-valuetext", "未入力");
@@ -180,9 +209,8 @@ test("approval changes only this session, template and actual RIR stay intact", 
   for (let n = 1; n <= 3; n++) {
     await card.getByLabel(`セット${n}のRIR`, { exact: true }).fill("2");
     await card.getByLabel(`セット${n}のRIR`, { exact: true }).blur();
-    await card
-      .getByRole("checkbox", { name: `セット${n}を完了`, exact: true })
-      .click();
+    await card.getByLabel(`セット${n}の回数`, { exact: true }).fill("8");
+    await card.getByLabel(`セット${n}の回数`, { exact: true }).blur();
   }
   await finish(page);
   await startA(page);
@@ -190,12 +218,8 @@ test("approval changes only this session, template and actual RIR stay intact", 
     "",
   );
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
-    "8",
+    "",
   );
-  // A manually edited field must not leave a stale draft that hides an accepted target.
-  await card.getByLabel("セット1の回数", { exact: true }).fill("7");
-  await card.getByLabel("セット1の回数", { exact: true }).fill("8");
-  await card.getByLabel("セット1の回数", { exact: true }).blur();
   await page.getByRole("link", { name: "AI", exact: true }).click();
   await page.getByRole("button", { name: "提案を作成", exact: true }).click();
   await expect(
@@ -203,7 +227,7 @@ test("approval changes only this session, template and actual RIR stay intact", 
   ).toHaveCount(5);
   await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
-    "8",
+    "",
   );
   await page.getByRole("link", { name: "AI", exact: true }).click();
   const lat = page.locator("section.card").filter({
@@ -215,8 +239,11 @@ test("approval changes only this session, template and actual RIR stay intact", 
   await expect(lat.getByText("承認済み", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
-    "9",
+    "",
   );
+  await expect(
+    card.getByLabel("セット1の回数", { exact: true }),
+  ).toHaveAttribute("placeholder", "9");
   await expect(card.getByLabel("セット1のRIR", { exact: true })).toHaveValue(
     "",
   );
@@ -277,10 +304,7 @@ test("sleep JSON preview is required and the unlinked notice stays until usable 
   page,
 }) => {
   await page.goto("./");
-  const notice = page.getByText(
-    "睡眠はショートカットの取得データを利用する予定です。現在は未連携。未取得分を推測・補完しません。",
-    { exact: true },
-  );
+  const notice = page.getByText("睡眠データの連携が必要です", { exact: true });
   await expect(notice).toBeVisible();
   await page
     .getByRole("button", {

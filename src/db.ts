@@ -73,6 +73,32 @@ export class AppDB extends Dexie {
               row.source ??= "legacy-v2";
             });
       });
+    this.version(4)
+      .stores({
+        ...stores,
+        importRows: "id,sourceHash,batchId,status",
+        importBatches: "id,fileHash",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("sets")
+          .toCollection()
+          .modify((row) => {
+            if (!row.completedAt && !row.inputState)
+              row.inputState = {
+                weight: String(
+                  row.inputWeight ??
+                    (row.inputUnit === "lb"
+                      ? row.weightKg * 2.2046226218
+                      : row.weightKg),
+                ),
+                reps: "",
+                rir: row.rirRaw ?? "",
+                weightTouched: false,
+                repsTouched: false,
+              };
+          });
+      });
   }
 }
 export const db = new AppDB("takin-2ku");

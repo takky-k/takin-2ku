@@ -31,8 +31,71 @@ const payloadSchema = z
   })
   .strict();
 export type HealthPayload = z.infer<typeof payloadSchema>;
-export function parseHealthJson(text: string): HealthPayload {
-  return payloadSchema.parse(JSON.parse(text));
+export const mappingSchema = z
+  .object({
+    list: z.string(),
+    start: z.string().min(1),
+    end: z.string().min(1),
+    stage: z.string().min(1),
+    source: z.string().min(1),
+    date: z.string().optional(),
+    stageValues: z.record(z.string(), stage),
+  })
+  .strict();
+export type HealthMapping = z.infer<typeof mappingSchema>;
+const getPath = (item: unknown, path: string): unknown =>
+  path
+    .split(".")
+    .filter(Boolean)
+    .reduce<unknown>(
+      (v, key) =>
+        v && typeof v === "object"
+          ? Object.prototype.hasOwnProperty.call(v, key)
+            ? (v as Record<string, unknown>)[key]
+            : undefined
+          : undefined,
+      item,
+    );
+export function parseHealthJson(
+  text: string,
+  mapping?: HealthMapping,
+): HealthPayload {
+  const raw = JSON.parse(text);
+  if (!mapping) return payloadSchema.parse(raw);
+  mapping = mappingSchema.parse(mapping);
+  const list = getPath(raw, mapping.list);
+  if (!Array.isArray(list))
+    throw Error(
+      "睡眠JSONのリスト位置が一致しません。実際のサンプルJSONを確認してください",
+    );
+  return payloadSchema.parse({
+    app: "takin-2ku-health",
+    schemaVersion: 1,
+    samples: list.map((item) => {
+      const start = getPath(item, mapping.start),
+        end = getPath(item, mapping.end),
+        rawStage = getPath(item, mapping.stage),
+        source = getPath(item, mapping.source);
+      const mapped =
+        typeof rawStage === "string"
+          ? mapping.stageValues[rawStage]
+          : undefined;
+      if (!mapped)
+        throw Error("未確認の睡眠段階があります。対応表を確認してください");
+      return {
+        type: "sleep",
+        startAt: start,
+        endAt: end,
+        stage: mapped,
+        source,
+        dateLocal: mapping.date
+          ? getPath(item, mapping.date)
+          : typeof end === "string"
+            ? localDate(new Date(end))
+            : undefined,
+      };
+    }),
+  });
 }
 export async function importHealth(db: AppDB, payload: HealthPayload) {
   payload = parseHealthJson(JSON.stringify(payload));
@@ -83,6 +146,14 @@ export async function importHealth(db: AppDB, payload: HealthPayload) {
       added++;
     }
   });
+  try {
+    localStorage.setItem(`takin-sleep-imported:${db.name}`, "true");
+  } catch {
+    /* Samples remain in IndexedDB. */
+  }
+  window.dispatchEvent(
+    new CustomEvent("takin-sleep-imported", { detail: db.name }),
+  );
   return { added, duplicates };
 }
 export function sleepHoursForDate(
@@ -125,7 +196,8 @@ export function SleepImport({
   const [open, setOpen] = useState(false),
     [preview, setPreview] = useState<HealthPayload | null>(null),
     [message, setMessage] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [mapping, setMapping] = useState("");
   return (
     <div className="sleep-import">
       {compact ? (
@@ -142,10 +214,24 @@ export function SleepImport({
       {(!compact || open) && (
         <>
           <p className="hint">
-            読み取り専用です。iPhoneのショートカットで睡眠のJSONファイルを作り、ここで選択します。自動同期やApple
-            Healthへの書き込みは行いません。
+            iPhoneのショートカットが作る睡眠JSONを選び、端末内へ取り込みます。Apple
+            Healthへの書き込みは行いません。自動取得は設定済みの取得先がある場合のみ利用できます。
           </p>
           <LinkGuide />
+          <details>
+            <summary>JSON形式が異なる場合の対応表</summary>
+            <p className="hint">
+              実際のJSONサンプルを確認して設定します。未確認のキーや単位を推測しません。start/endはタイムゾーン付きISO日時、dateは睡眠が属する起床日のyyyy-MM-ddです。
+            </p>
+            <textarea
+              aria-label="睡眠JSONのフィールド対応"
+              value={mapping}
+              onChange={(e) => setMapping(e.target.value)}
+              placeholder={
+                '{"list":"data","start":"start","end":"end","stage":"value","source":"device","date":"date","stageValues":{"睡眠":"asleep"}}'
+              }
+            />
+          </details>
           <label>
             睡眠JSONファイル
             <input
@@ -159,7 +245,14 @@ export function SleepImport({
                     try {
                       if (file.size > 5_000_000)
                         throw Error("5MB以内のJSONを選択してください");
-                      setPreview(parseHealthJson(await file.text()));
+                      setPreview(
+                        parseHealthJson(
+                          await file.text(),
+                          mapping.trim()
+                            ? mappingSchema.parse(JSON.parse(mapping))
+                            : undefined,
+                        ),
+                      );
                       setMessage("");
                     } catch (err) {
                       setPreview(null);

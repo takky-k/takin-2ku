@@ -86,6 +86,13 @@ export async function startWorkout(
             inputUnit: target.inputUnit,
             loadMode: exercise.measurementBasis,
             reps: target.reps,
+            inputState: {
+              weight: String(target.inputWeight),
+              reps: "",
+              rir: "",
+              weightTouched: false,
+              repsTouched: false,
+            },
             rir: null,
             rirRaw: "",
             rirConfidence: "unknown",
@@ -163,15 +170,23 @@ export async function finishWorkout(db: AppDB, id: string) {
   for (const row of rows) {
     let raw: string | null = null;
     try {
-      raw = localStorage.getItem(
-        `takin-table-draft-${db.name}-${row.id}-${unit}`,
-      );
+      raw =
+        localStorage.getItem(`takin-sheet-draft-${db.name}-${row.id}`) ??
+        localStorage.getItem(`takin-table-draft-${db.name}-${row.id}-${unit}`);
     } catch {
       /* IndexedDB can still be available without localStorage. */
     }
     if (raw) {
       try {
-        const fields = JSON.parse(raw);
+        const cached = JSON.parse(raw),
+          fields = cached.fields ?? cached;
+        if (
+          typeof fields.reps === "string" &&
+          typeof fields.rir === "string" &&
+          !fields.reps.trim() &&
+          !fields.rir.trim()
+        )
+          continue;
         if (
           typeof fields.weight !== "string" ||
           typeof fields.reps !== "string" ||
@@ -205,7 +220,33 @@ export async function finishWorkout(db: AppDB, id: string) {
         .filter((r) => !r.deletedAt && !!r.completedAt)
         .count())
     )
-      throw Error("完了したセットがありません");
+      throw Error(
+        "入力済みのセットがありません。重量と回数を入力してください。",
+      );
+    const currentRows = await db.sets
+      .where("sessionId")
+      .equals(id)
+      .filter((r) => !r.deletedAt)
+      .toArray();
+    for (const row of currentRows) {
+      if (row.inputState) {
+        const f = row.inputState;
+        if (!f.reps && !f.rir) continue;
+        try {
+          if (!f.weight.trim() || !/^\d+$/.test(f.reps)) throw Error("未入力");
+          setSchema.parse({
+            ...row,
+            weightKg: displayToKg(Number(f.weight), row.inputUnit ?? unit),
+            reps: Number(f.reps),
+            rir: parseRir(f.rir),
+          });
+        } catch {
+          throw Error(
+            `セット${row.ordinal + 1}に入力途中または不正な値があります。入力を確認してください`,
+          );
+        }
+      }
+    }
     await save(
       db,
       "sessions",

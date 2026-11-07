@@ -98,3 +98,36 @@ it("upgrades an actual IndexedDB v1 database", async () => {
   expect((await upgraded.sets.toArray())[0].rir).toEqual({ min: 0, max: 0 });
   expect((await upgraded.sets.toArray())[0].schemaVersion).toBe(3);
 });
+it("upgrades v3 without counting untouched targets as entered, retaining completed history and legacy fields", async () => {
+  const name = "migration-v3-" + crypto.randomUUID(),
+    old = new Dexie(name);
+  old.version(3).stores({ sets: "id,sessionId,exerciseId" });
+  const untouched = {
+    ...meta(),
+    id: "untouched",
+    sessionId: "s",
+    exerciseId: "e",
+    weightKg: 10,
+    reps: 8,
+    inputWeight: 22,
+    inputUnit: "lb",
+    rir: null,
+    completedAt: null,
+  };
+  const completed = {
+    ...untouched,
+    id: "completed",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    notes: "保持するメモ",
+    rir: { min: 0, max: 0 },
+  };
+  await old.table("sets").bulkAdd([untouched, completed]);
+  old.close();
+  const upgraded = new AppDB(name);
+  opened.push(upgraded);
+  const target = await upgraded.sets.get("untouched");
+  expect(target?.inputState?.reps).toBe("");
+  expect(target?.inputState?.repsTouched).toBe(false);
+  expect(target?.reps).toBe(8);
+  expect(await upgraded.sets.get("completed")).toEqual(completed);
+});

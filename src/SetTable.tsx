@@ -1,5 +1,5 @@
-import { Fragment, useState } from "react";
-import { type AppDB, save, revised, remove } from "./db";
+import { Fragment, useEffect, useState, useRef } from "react";
+import { type AppDB, remove } from "./db";
 import {
   type WorkoutSet,
   formatRir,
@@ -9,77 +9,73 @@ import {
   round,
 } from "./model";
 import { saveSetInputs } from "./set-inputs";
+type Fields = NonNullable<WorkoutSet["inputState"]>;
 export function SetTable({
   database,
   rows,
   previous,
   unit,
-  onCompleted,
 }: {
   database: AppDB;
   rows: WorkoutSet[];
   previous: WorkoutSet[];
   unit: "kg" | "lb";
-  onCompleted: (seconds: number) => void;
 }) {
-  async function move(row: WorkoutSet, other: WorkoutSet) {
-    await database.transaction(
-      "rw",
-      [database.sets, database.queue],
-      async () => {
-        await save(
-          database,
-          "sets",
-          revised({ ...row, ordinal: other.ordinal }),
-        );
-        await save(
-          database,
-          "sets",
-          revised({ ...other, ordinal: row.ordinal }),
-        );
-      },
-    );
-  }
   return (
-    <table className="workout-table">
-      <caption className="sr-only">前回の記録と今回のセット入力</caption>
+    <table className="workout-table compact-sheet">
+      <caption className="sr-only">セットの直接入力</caption>
       <colgroup>
-        <col className="previous-column" />
+        <col className="set-column" />
         <col />
         <col />
         <col />
+        <col className="delete-column" />
       </colgroup>
       <thead>
         <tr>
-          <th scope="col">前回の記録</th>
+          <th scope="col">SET</th>
+          <th scope="col">重量 ({unit})</th>
+          <th scope="col">REPS</th>
+          <th scope="col">RIR</th>
           <th scope="col">
-            今回の重量<small>({unit})</small>
+            <span className="sr-only">最終行の削除</span>
           </th>
-          <th scope="col">今回の回数</th>
-          <th scope="col">今回のRIR</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row, index) => (
           <SetRow
-            key={row.id}
+            key={row.id + "-" + unit}
             database={database}
             row={row}
             previous={previous[index]}
             index={index}
             unit={unit}
-            onCompleted={onCompleted}
-            onMove={async (delta) => {
-              const other = rows[index + delta];
-              if (other) await move(row, other);
-            }}
-            canUp={index > 0}
-            canDown={index < rows.length - 1}
+            last={index === rows.length - 1}
           />
         ))}
       </tbody>
     </table>
   );
+}
+function initial(row: WorkoutSet, unit: "kg" | "lb"): Fields {
+  return row.inputState
+    ? {
+        ...row.inputState,
+        weight:
+          row.inputUnit === unit
+            ? row.inputState.weight
+            : String(round(kgToDisplay(row.weightKg, unit))),
+        weightTouched:
+          row.inputUnit === unit ? row.inputState.weightTouched : false,
+      }
+    : {
+        weight: String(round(kgToDisplay(row.weightKg, unit))),
+        reps: row.completedAt ? String(row.reps) : "",
+        rir: row.rir === null ? "" : formatRir(row.rir),
+        weightTouched: false,
+        repsTouched: !!row.completedAt,
+      };
 }
 function SetRow({
   database,
@@ -87,170 +83,196 @@ function SetRow({
   previous,
   index,
   unit,
-  onCompleted,
-  onMove,
-  canUp,
-  canDown,
+  last,
 }: {
   database: AppDB;
   row: WorkoutSet;
   previous?: WorkoutSet;
   index: number;
   unit: "kg" | "lb";
-  onCompleted: (n: number) => void;
-  onMove: (delta: number) => Promise<void>;
-  canUp: boolean;
-  canDown: boolean;
+  last: boolean;
 }) {
-  const key = `takin-table-draft-${database.name}-${row.id}-${unit}`;
-  const [fields, setFields] = useState(() => {
+  const key = `takin-sheet-draft-${database.name}-${row.id}`;
+  const [fields, setFields] = useState<Fields>(() => {
       try {
-        const cached = localStorage.getItem(key);
-        if (cached)
-          return JSON.parse(cached) as {
-            weight: string;
-            reps: string;
-            rir: string;
-          };
+        const cache = localStorage.getItem(key);
+        if (cache) {
+          const value = JSON.parse(cache);
+          if (
+            value.unit === unit &&
+            typeof value.fields?.weight === "string" &&
+            typeof value.fields?.reps === "string" &&
+            typeof value.fields?.rir === "string"
+          )
+            return value.fields;
+        }
+        const old = localStorage.getItem(
+          `takin-table-draft-${database.name}-${row.id}-${unit}`,
+        );
+        if (old) {
+          const value = JSON.parse(old);
+          if (
+            typeof value.weight === "string" &&
+            typeof value.reps === "string" &&
+            typeof value.rir === "string"
+          )
+            return { ...value, weightTouched: true, repsTouched: true };
+        }
       } catch {
-        /* Primary values still live in IndexedDB. */
+        /* Primary values are still in IndexedDB. */
       }
-      return {
-        weight: String(round(kgToDisplay(row.weightKg, unit))),
-        reps: String(row.reps),
-        rir: row.rir === null ? "" : formatRir(row.rir),
-      };
+      return initial(row, unit);
     }),
     [error, setError] = useState(""),
-    [confirmDelete, setConfirmDelete] = useState(false);
-  async function commit(next = fields, patch: Partial<WorkoutSet> = {}) {
+    [note, setNote] = useState(row.notes);
+  const dirty = useRef(false),
+    latest = useRef(row),
+    observedRevision = useRef(row.revision);
+  latest.current = row;
+  useEffect(() => {
     try {
-      if (!next.weight.trim() || !next.reps.trim())
-        throw Error("重量と回数を入力してください");
-      const rir = parseRir(next.rir),
-        weightChanged =
-          next.weight !== String(round(kgToDisplay(row.weightKg, unit)));
-      await saveSetInputs(database, row, {
-        weightKg: weightChanged
-          ? displayToKg(Number(next.weight), unit)
-          : row.weightKg,
-        inputUnit: weightChanged ? unit : (row.inputUnit ?? unit),
-        inputWeight: weightChanged
-          ? Number(next.weight)
-          : (row.inputWeight ??
-            kgToDisplay(row.weightKg, row.inputUnit ?? unit)),
-        reps: Number(next.reps),
-        rir,
+      if (
+        localStorage.getItem(
+          `takin-table-draft-${database.name}-${row.id}-${unit}`,
+        )
+      ) {
+        dirty.current = true;
+        void persist(fields);
+      }
+    } catch {
+      /* IndexedDB remains primary. */
+    }
+  }, []);
+  useEffect(() => {
+    if (observedRevision.current === row.revision) return;
+    observedRevision.current = row.revision;
+    if (!dirty.current) {
+      setFields(initial(row, unit));
+      setNote(row.notes);
+    }
+  }, [row.revision, unit]);
+  async function persist(next: Fields, notes = note) {
+    try {
+      const validWeight =
+        next.weight.trim() !== "" &&
+        Number.isFinite(Number(next.weight)) &&
+        Number(next.weight) >= 0 &&
+        displayToKg(Number(next.weight), unit) <= 2000;
+      const validReps = /^\d+$/.test(next.reps) && Number(next.reps) <= 1000;
+      let rir: WorkoutSet["rir"] = null,
+        validRir = true;
+      try {
+        rir = parseRir(next.rir);
+      } catch {
+        validRir = false;
+      }
+      const current = latest.current,
+        recorded = validWeight && validReps && validRir && next.repsTouched;
+      await saveSetInputs(database, current, {
+        weightKg: validWeight
+          ? next.weightTouched
+            ? displayToKg(Number(next.weight), unit)
+            : current.weightKg
+          : current.weightKg,
+        inputUnit: unit,
+        inputWeight: validWeight
+          ? next.weightTouched
+            ? Number(next.weight)
+            : kgToDisplay(current.weightKg, unit)
+          : current.inputWeight,
+        reps: validReps ? Number(next.reps) : current.reps,
+        rir: validRir ? rir : current.rir,
         rirRaw: next.rir,
         rirConfidence: rir
           ? rir.min === rir.max
             ? "exact"
             : "range"
           : "unknown",
-        ...patch,
+        inputState: next,
+        notes,
+        completedAt: recorded
+          ? (current.completedAt ?? new Date().toISOString())
+          : null,
       });
+      const saved = await database.sets.get(row.id);
+      if (saved) latest.current = saved;
       try {
-        if (localStorage.getItem(key) === JSON.stringify(next))
+        localStorage.removeItem(
+          `takin-table-draft-${database.name}-${row.id}-${unit}`,
+        );
+        const cache = localStorage.getItem(key);
+        if (
+          cache &&
+          JSON.stringify(JSON.parse(cache).fields) === JSON.stringify(next)
+        )
           localStorage.removeItem(key);
       } catch {
-        /* DB has committed. */
+        /* Primary write succeeded. */
       }
-      setError("");
-      return true;
+      setError(
+        !validRir
+          ? "RIRは0〜10、0.5刻み、1~2の範囲で入力してください"
+          : next.reps !== "" && !validReps
+            ? "回数は0以上の整数で入力してください"
+            : !validWeight && next.weight !== ""
+              ? "重量を確認してください"
+              : "",
+      );
     } catch (e) {
-      setError(String(e));
-      return false;
+      setError(`保存できませんでした：${String(e)}`);
     }
   }
-  function edit(field: keyof typeof fields, value: string) {
-    const next = { ...fields, [field]: value };
+  function edit(field: "weight" | "reps" | "rir", value: string) {
+    dirty.current = true;
+    const next = {
+      ...fields,
+      [field]: value,
+      ...(field === "weight"
+        ? { weightTouched: true }
+        : field === "reps"
+          ? { repsTouched: true }
+          : {}),
+    };
     setFields(next);
     try {
-      localStorage.setItem(key, JSON.stringify(next));
+      localStorage.setItem(key, JSON.stringify({ unit, fields: next }));
     } catch {
       setError("入力途中の補助保存が利用できません");
     }
-    void commit(next);
+    void persist(next);
   }
-  async function action(fn: () => Promise<unknown>) {
+  async function deleteLast() {
+    if (!last) return;
     try {
-      await fn();
+      await database.transaction(
+        "rw",
+        [database.sets, database.queue],
+        async () => {
+          const active = await database.sets
+            .where("sessionId")
+            .equals(row.sessionId)
+            .filter((s) => !s.deletedAt && s.exerciseId === row.exerciseId)
+            .sortBy("ordinal");
+          if (active.at(-1)?.id !== row.id)
+            throw Error("行が変更されました。最後の行を確認してください");
+          const current = await database.sets.get(row.id);
+          if (current) await remove(database, "sets", current);
+        },
+      );
     } catch (e) {
       setError(String(e));
     }
   }
+  const reference = previous ?? row.referencePrevious;
   return (
     <Fragment>
-      <tr className={row.completedAt ? "completed-set" : ""}>
-        <td>
-          <span className="set-number">SET {index + 1}</span>
-          <div className="previous-result">
-            {previous ? (
-              <>
-                {round(kgToDisplay(previous.weightKg, unit))}
-                {unit} × {previous.reps}回
-                <small>RIR {formatRir(previous.rir)}</small>
-              </>
-            ) : (
-              <span className="muted">記録なし</span>
-            )}
-          </div>
-          <div className="set-actions">
-            <label className="set-check">
-              <input
-                type="checkbox"
-                aria-label={`セット${index + 1}を完了`}
-                checked={!!row.completedAt}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  void action(async () => {
-                    if (
-                      await commit(fields, {
-                        completedAt: checked ? new Date().toISOString() : null,
-                      })
-                    )
-                      if (checked) onCompleted(row.restSeconds ?? 120);
-                  });
-                }}
-              />
-              完了
-            </label>
-            <details>
-              <summary aria-label={`セット${index + 1}の操作`}>…</summary>
-              <div className="set-menu">
-                <button
-                  disabled={!canUp}
-                  onClick={() => void action(() => onMove(-1))}
-                >
-                  上へ
-                </button>
-                <button
-                  disabled={!canDown}
-                  onClick={() => void action(() => onMove(1))}
-                >
-                  下へ
-                </button>
-                <button
-                  aria-label={
-                    confirmDelete ? "削除を確定" : `セット${index + 1}を削除`
-                  }
-                  onClick={() => {
-                    if (!confirmDelete) {
-                      setConfirmDelete(true);
-                      return;
-                    }
-                    void action(() => remove(database, "sets", row));
-                  }}
-                >
-                  {confirmDelete ? "削除を確定" : "削除"}
-                </button>
-                {confirmDelete && (
-                  <button onClick={() => setConfirmDelete(false)}>取消</button>
-                )}
-              </div>
-            </details>
-          </div>
-        </td>
+      <tr className={row.completedAt ? "recorded-set" : ""}>
+        <th scope="row">
+          {index + 1}
+          <span className="sr-only">
+            {row.completedAt ? "入力済み" : "未入力"}
+          </span>
+        </th>
         <td>
           <input
             aria-label={`セット${index + 1}の重量`}
@@ -260,7 +282,10 @@ function SetRow({
             min="0"
             value={fields.weight}
             onChange={(e) => edit("weight", e.target.value)}
-            onBlur={() => void commit()}
+            onBlur={() => {
+              dirty.current = false;
+              void persist(fields);
+            }}
           />
         </td>
         <td>
@@ -268,11 +293,19 @@ function SetRow({
             aria-label={`セット${index + 1}の回数`}
             type="number"
             inputMode="numeric"
-            step="1"
             min="0"
+            step="1"
+            placeholder={
+              row.inputState && !row.inputState.repsTouched
+                ? String(row.reps)
+                : "回数"
+            }
             value={fields.reps}
             onChange={(e) => edit("reps", e.target.value)}
-            onBlur={() => void commit()}
+            onBlur={() => {
+              dirty.current = false;
+              void persist(fields);
+            }}
           />
         </td>
         <td>
@@ -283,17 +316,56 @@ function SetRow({
             placeholder="任意"
             value={fields.rir}
             onChange={(e) => edit("rir", e.target.value)}
-            onBlur={() => void commit()}
+            onBlur={() => {
+              dirty.current = false;
+              void persist(fields);
+            }}
           />
+        </td>
+        <td>
+          {last && (
+            <button
+              className="delete-last"
+              aria-label={`最終セット${index + 1}を削除`}
+              onClick={() => void deleteLast()}
+            >
+              ×
+            </button>
+          )}
         </td>
       </tr>
       {error && (
         <tr>
-          <td colSpan={4} role="alert" className="error">
+          <td colSpan={5} role="alert" className="error">
             {error}
           </td>
         </tr>
       )}
+      <tr className="set-detail-row">
+        <td colSpan={5}>
+          {reference && (
+            <small className="row-reference">
+              前回：{round(kgToDisplay(reference.weightKg, unit))}
+              {unit} × {reference.reps}回 / RIR {formatRir(reference.rir)}
+              {!previous ? "（日付不明の比較メモ）" : ""}
+            </small>
+          )}
+          <details>
+            <summary>
+              セット{index + 1}のメモ{note ? " · 記入あり" : ""}
+            </summary>
+            <textarea
+              aria-label={`セット${index + 1}のメモ`}
+              value={note}
+              onChange={(e) => {
+                dirty.current = true;
+                setNote(e.target.value);
+                void persist(fields, e.target.value);
+              }}
+            />
+          </details>
+        </td>
+      </tr>
     </Fragment>
   );
 }
