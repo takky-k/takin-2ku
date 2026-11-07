@@ -70,7 +70,11 @@ import { cleanAccidentalACopies, restoreMenuCopies } from "./menu-cleanup";
 import { SleepImport } from "./health";
 import { restorePendingSetInputs } from "./set-inputs";
 import { useAppRefresh } from "./app-lifecycle";
-import { ConditionRequired, prepareWorkout } from "./start-targets";
+import {
+  ConditionRequired,
+  prepareWorkout,
+  startFromSavedCondition,
+} from "./start-targets";
 import { WorkoutImportPanel } from "./workout-import";
 import { exportTrainingCsv } from "./training-export";
 import { SleepConnectionSettings } from "./SleepConnection";
@@ -894,7 +898,12 @@ function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
       plans={data.plans}
       exercises={data.exercises}
       requestedPlanId={requestedPlanId}
-      onSaved={() => useUI.getState().setError("")}
+      onSaved={async (saved) => {
+        useUI.getState().setError("");
+        if (sessionId !== null) return;
+        await startFromSavedCondition(database, saved);
+        window.location.hash = "/workout/current";
+      }}
     />
   );
 }
@@ -1531,7 +1540,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.7.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.8.0 / ローカル版</p>
       </section>
     </>
   );

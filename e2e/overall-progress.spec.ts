@@ -10,12 +10,7 @@ test("compact numeric widths and default overall analysis with persisted body go
   for (const s of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
     await s.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await page
-    .locator(".menu-card")
-    .first()
-    .getByRole("button", { name: "開始する", exact: true })
-    .click();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
   await expect(
     page.getByText("記録中 · 自動保存", { exact: true }),
   ).toHaveCount(0);

@@ -66,7 +66,10 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
           r.sessionId === s.id &&
           r.exerciseId === e.exerciseId &&
           !r.deletedAt &&
-          !r.completedAt,
+          !r.completedAt &&
+          !r.inputState?.weightTouched &&
+          !r.inputState?.repsTouched &&
+          !r.rirRaw,
       )
       .sort((a, b) => a.ordinal - b.ordinal);
     if (!current.length) continue;
@@ -83,8 +86,8 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       increment = observedIncrement(evidence);
     const locked =
       exercise?.autoProgression === false || current.some((r) => r.isLocked);
-    const proposedTargets = current.map((r, i) => {
-      const previous = evidence[i];
+    const proposedTargets = current.map((r) => {
+      const previous = evidence.find((p) => p.ordinal === r.ordinal);
       let weightKg = r.weightKg,
         reps = r.reps;
       // Untouched targets can follow the latest actual performance on this exact
@@ -240,7 +243,7 @@ export async function decideRecommendation(
             throw Error("セットが変更されています。提案を作り直してください");
           const increase =
             target.weightKg > row.weightKg + 0.000001 || target.reps > row.reps;
-          const previous = history[r.proposedTargets.indexOf(target)],
+          const previous = history.find((p) => p.ordinal === row.ordinal),
             useActual =
               previous &&
               !row.isLocked &&

@@ -33,6 +33,30 @@ async function requireCondition(db: AppDB, planId: string, muscles: string[]) {
     throw new ConditionRequired(planId);
 }
 const preparing = new Map<string, { planId: string; task: Promise<string> }>();
+export async function startFromSavedCondition(
+  db: AppDB,
+  saved: Entities["wellness"],
+) {
+  if (
+    saved.sessionId !== null ||
+    saved.dateLocal !== localDate() ||
+    !saved.plannedPlanId
+  )
+    throw Error("今日のメニューを選んで保存してください。");
+  const plan = await db.plans.get(saved.plannedPlanId),
+    profile = await db.profiles.get("main");
+  if (!plan || plan.deletedAt || !plan.exercises.length || !profile)
+    throw Error("メニューまたは設定を確認してください。");
+  const existing = await db.sessions
+    .where("status")
+    .anyOf("active", "paused")
+    .filter((s) => !s.deletedAt && s.planId === plan.id)
+    .first();
+  const id = await prepareWorkout(db, plan, profile.units);
+  if (existing?.id === id && existing.requiresTargetReview === false)
+    await refreshTargets(db, id);
+  return id;
+}
 export async function refreshTargets(db: AppDB, id: string) {
   const session = await db.sessions.get(id);
   if (!session || session.status !== "active" || !session.planId)
