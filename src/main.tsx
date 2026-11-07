@@ -11,7 +11,6 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Activity,
-  CalendarDays,
   ChartNoAxesCombined,
   House,
   Settings as SettingsIcon,
@@ -61,12 +60,7 @@ import "./style.css";
 import { PlanEditor } from "./PlanEditor";
 import { CsvImport } from "./CsvImport";
 import { installDefaultPlans } from "./db";
-import {
-  startWorkout,
-  sessionDay,
-  comparison,
-  finishWorkout,
-} from "./training";
+import { sessionDay, comparison, finishWorkout } from "./training";
 import { AdvicePanel } from "./AdvicePanel";
 import { WellnessForm } from "./WellnessForm";
 import { SetTable } from "./SetTable";
@@ -75,6 +69,7 @@ import { cleanAccidentalACopies, restoreMenuCopies } from "./menu-cleanup";
 import { SleepImport } from "./health";
 import { restorePendingSetInputs } from "./set-inputs";
 import { useAppRefresh } from "./app-lifecycle";
+import { StartReview, prepareWorkout } from "./StartReview";
 import { WorkoutImportPanel } from "./workout-import";
 import { exportTrainingCsv } from "./training-export";
 import { SleepConnectionSettings } from "./SleepConnection";
@@ -232,11 +227,13 @@ export function App() {
               "トレーニング終了後に更新できます。"}
           </div>
         )}
-        {data?.sessions.some((s) => s.status === "active") && (
-          <Link className="resume-strip" to="/workout">
-            進行中のトレーニングに戻る →
-          </Link>
-        )}
+        {route.pathname !== "/" &&
+          route.pathname !== "/workout" &&
+          data?.sessions.some((s) => s.status === "active") && (
+            <Link className="resume-strip" to="/workout">
+              進行中のトレーニングに戻る →
+            </Link>
+          )}
         <Routes key={database.name}>
           <Route path="/" element={<Today key={appDate} />} />
           <Route path="/workout" element={<Workout />} />
@@ -253,7 +250,6 @@ export function App() {
         {[
           [House, "/", text.ja.today],
           [Activity, "/workout", "記録"],
-          [CalendarDays, "/history", text.ja.history],
           [ChartNoAxesCombined, "/analysis", text.ja.analysis],
           [Sparkles, "/ai", text.ja.ai],
         ].map(([Icon, path, label]) => {
@@ -289,21 +285,9 @@ function Title({
   );
 }
 function Today() {
-  const { database, data } = useData();
-  const route = useLocation();
-  useEffect(() => {
-    if (data && route.hash === "#menus")
-      document.getElementById("menus")?.scrollIntoView({ block: "start" });
-  }, [!!data, route.key]);
-  if (!data?.profile) return <p>ローカルデータを準備中…</p>;
-  const active = data.sessions.find((s) => s.status === "active"),
-    weekly = weeklySummary(data.sessions, data.sets),
-    latest = data.sessions
-      .filter((s) => s.status === "finished")
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   return (
     <>
-      <h1 className="sr-only">今日のトレーニング</h1>
+      <h1 className="sr-only">今日のコンディション</h1>
       <p className="today-date">
         {new Date().toLocaleDateString("ja-JP", {
           month: "long",
@@ -311,29 +295,20 @@ function Today() {
           weekday: "long",
         })}
       </p>
-      <section className="hero">
-        <div className="hero-top">
-          <span>今週のトレーニング</span>
-          <Activity size={21} />
-        </div>
-        <div className="hero-number">
-          {weekly.sessions}
-          <small> / {data.profile.targetDaysPerWeek} 回</small>
-        </div>
-        <progress
-          max={data.profile.targetDaysPerWeek}
-          value={weekly.sessions}
-        />
-      </section>
       <section className="card condition-card">
         <h2>今日のコンディション</h2>
         <WellnessEditor />
       </section>
-      {active && (
-        <Link className="button primary full" to="/workout">
-          トレーニングを再開
-        </Link>
-      )}
+    </>
+  );
+}
+function MyMenus() {
+  const { database, data } = useData();
+  if (!data?.profile) return <p>メニューを準備中…</p>;
+  const active = data.sessions.find((s) => s.status === "active");
+  return (
+    <>
+      {" "}
       <div className="section-heading" id="menus">
         <h2>マイメニュー</h2>
         <Link className="button" to="/plans/new">
@@ -364,7 +339,7 @@ function Today() {
               disabled={!!active || !p.exercises.length}
               onClick={() =>
                 run(async () => {
-                  await startWorkout(database, p, data.profile!.units);
+                  await prepareWorkout(database, p, data.profile!.units);
                   window.location.hash = "/workout";
                 })
               }
@@ -382,19 +357,22 @@ function Today() {
           </div>
         </section>
       ))}
-      <h2>直近のトレーニング</h2>
-      {latest ? (
-        <Link to="/history" className="card history-link">
-          <span>
-            <b>{latest.name}</b>
-            <small>{date(sessionDay(latest) + "T12:00:00")}</small>
-          </span>
-          <span>詳細 →</span>
-        </Link>
-      ) : (
-        <section className="card muted">まだ記録がありません。</section>
-      )}
     </>
+  );
+}
+function WeeklyTraining({ count, target }: { count: number; target: number }) {
+  return (
+    <section className="hero" aria-label="今週のトレーニング">
+      <div className="hero-top">
+        <span>今週のトレーニング</span>
+        <Activity size={21} />
+      </div>
+      <div className="hero-number">
+        {count}
+        <small> / {target} 回</small>
+      </div>
+      <progress max={target} value={count} />
+    </section>
   );
 }
 function PlanEditRoute() {
@@ -419,7 +397,7 @@ function PlanEditRoute() {
           database={database}
           exercises={data.exercises}
           unit={data.profile.units}
-          close={() => navigate("/#menus")}
+          close={() => navigate("/workout")}
         />
       ) : (
         <section className="card">
@@ -483,16 +461,9 @@ function Workout() {
   return (
     <>
       <Title eyebrow="TRAINING" title="トレーニング" />
-      {!s && latestFinished && (
-        <section className="card">
-          <h2>トレーニング後の体重</h2>
-          <p className="hint">
-            {sessionDay(latestFinished)} · {latestFinished.name}
-          </p>
-          <WellnessEditor sessionId={latestFinished.id} />
-        </section>
-      )}
-      {s ? (
+      {s?.requiresTargetReview ? (
+        <StartReview database={database} sessionId={s.id} />
+      ) : s ? (
         <>
           <SessionEditor session={s} />
           <section className="card">
@@ -542,26 +513,20 @@ function Workout() {
           </section>
         </>
       ) : (
-        <section className="card">
-          <h2>今日のメニューを選ぶ</h2>
-          <p>実施日は自由に選べます。予定値を確認して始めましょう。</p>
-          {data?.plans.map((p) => (
-            <button
-              className="full"
-              key={p.id}
-              onClick={() =>
-                run(() =>
-                  startWorkout(database, p, data.profile?.units ?? "lb"),
-                )
-              }
-            >
-              {p.name}を開始
-            </button>
-          ))}
-          <Link className="button primary" to="/">
-            今日のメニューへ
-          </Link>
-        </section>
+        <MyMenus />
+      )}
+      {!s && latestFinished && (
+        <details
+          className="card post-workout-weight"
+          open={sessionDay(latestFinished) === localDate()}
+        >
+          <summary>トレーニング後の体重を記録</summary>
+          <h2>トレーニング後の体重</h2>
+          <p className="hint">
+            {sessionDay(latestFinished)} · {latestFinished.name}
+          </p>
+          <WellnessEditor sessionId={latestFinished.id} />
+        </details>
       )}
     </>
   );
@@ -1064,7 +1029,28 @@ function Analysis() {
     [metric, setMetric] = useState("e1rm");
   if (!data?.profile) return null;
   const unit = data.profile.units,
-    selected = exercise || data.exercises[0]?.id,
+    latest = data.sessions
+      .filter(
+        (s) =>
+          s.status === "finished" &&
+          data.sets.some((r) => r.sessionId === s.id && r.completedAt),
+      )
+      .sort(
+        (a, b) =>
+          sessionDay(b).localeCompare(sessionDay(a)) ||
+          b.startedAt.localeCompare(a.startedAt),
+      )[0],
+    selected =
+      exercise ||
+      latest?.exercises.find((e) =>
+        data.sets.some(
+          (r) =>
+            r.sessionId === latest.id &&
+            r.exerciseId === e.exerciseId &&
+            r.completedAt,
+        ),
+      )?.exerciseId ||
+      data.exercises[0]?.id,
     weekly = weeklySummary(data.sessions, data.sets);
   const points = data.sessions
     .filter(
@@ -1099,24 +1085,13 @@ function Analysis() {
         },
       ];
     });
-  const finished = data.sessions.filter((s) => s.status === "finished").length;
   return (
     <>
       <Title eyebrow="SMALL STEPS, REAL PROGRESS" title="進捗と分析" />
-      <section className="card">
-        <h2>目標への積み重ね</h2>
-        <p>
-          週間頻度 {weekly.sessions} / {data.profile.targetDaysPerWeek}回
-        </p>
-        <progress
-          value={weekly.sessions}
-          max={data.profile.targetDaysPerWeek}
-        />
-        <p>記録したセッション {finished}回</p>
-        <p className="hint">
-          体型の達成率は記録だけでは推定できません。頻度・筋群別セット数・種目の推移から進捗を確認しましょう。
-        </p>
-      </section>
+      <WeeklyTraining
+        count={weekly.sessions}
+        target={data.profile.targetDaysPerWeek}
+      />
       <section className="card">
         <h2>種目の推移</h2>
         <label>
@@ -1203,6 +1178,9 @@ function Analysis() {
         ))}
         {!Object.keys(weekly.muscles).length && <p>今週の記録はありません。</p>}
       </section>
+      <Link className="button full" to="/history">
+        保存したトレーニング記録を確認
+      </Link>
       <section className="card">
         <h2>回復・個人予測</h2>
         <p className="muted">
@@ -1549,7 +1527,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.3.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.4.0 / ローカル版</p>
       </section>
     </>
   );

@@ -6,14 +6,21 @@ const planA = (page: Page) =>
       exact: true,
     }),
   });
-async function startA(page: Page) {
-  await page.getByRole("link", { name: "今日", exact: true }).click();
+async function startA(page: Page, approve = true) {
+  await page.getByRole("link", { name: "記録", exact: true }).click();
   await planA(page)
     .getByRole("button", { name: "開始する", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "トレーニング", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
+  ).toBeVisible();
+  if (approve)
+    await page
+      .getByRole("button", { name: "この目標で開始", exact: true })
+      .click();
 }
 async function finish(page: Page) {
   await page
@@ -32,6 +39,7 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   context,
 }) => {
   await page.goto("./");
+  await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(planA(page)).toBeVisible();
   await page.screenshot({
     path: "test-results/mobile-dashboard.png",
@@ -142,7 +150,10 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await expect(page.getByLabel("体重 (lb)", { exact: true })).toHaveValue(
     "160",
   );
-  await page.getByRole("link", { name: "履歴", exact: true }).click();
+  await page.getByRole("link", { name: "分析", exact: true }).click();
+  await page
+    .getByRole("link", { name: "保存したトレーニング記録を確認", exact: true })
+    .click();
   await expect(page.getByRole("button", { name: /A｜/ })).toHaveCount(1);
   await context.setOffline(false);
 });
@@ -152,6 +163,7 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("./");
+  await page.getByRole("link", { name: "記録", exact: true }).click();
   await page.getByRole("link", { name: "作成", exact: true }).click();
   await expect(page).toHaveURL(/#\/plans\/new$/);
   await expect(
@@ -168,6 +180,7 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
   await expect(
     page.getByRole("heading", { name: "カスタム上半身" }),
   ).toBeVisible();
+  await page.getByRole("link", { name: "今日", exact: true }).click();
   await expect(
     page.getByText("痛み・体調不良がある", { exact: true }),
   ).toHaveCount(0);
@@ -220,31 +233,15 @@ test("approval changes only this session, template and actual RIR stay intact", 
     await card.getByLabel(`セット${n}の回数`, { exact: true }).blur();
   }
   await finish(page);
-  await startA(page);
-  await expect(card.getByLabel("セット1のRIR", { exact: true })).toHaveValue(
-    "",
-  );
-  await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
-    "",
-  );
-  await page.getByRole("link", { name: "AI", exact: true }).click();
-  await page.getByRole("button", { name: "提案を作成", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "承認して今回に反映", exact: true }),
-  ).toHaveCount(5);
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
-    "",
-  );
-  await page.getByRole("link", { name: "AI", exact: true }).click();
-  const lat = page.locator("section.card").filter({
-    has: page.getByRole("heading", { name: "ラットプルダウン", exact: true }),
-  });
-  await lat
-    .getByRole("button", { name: "承認して今回に反映", exact: true })
+  const editUrl = await planA(page)
+    .getByRole("link", { name: /を編集/ })
+    .getAttribute("href");
+  await startA(page, false);
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await expect(page.locator(".target-review").first()).toContainText("9回");
+  await page
+    .getByRole("button", { name: "この目標で開始", exact: true })
     .click();
-  await expect(lat.getByText("承認済み", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
     "",
   );
@@ -254,13 +251,7 @@ test("approval changes only this session, template and actual RIR stay intact", 
   await expect(card.getByLabel("セット1のRIR", { exact: true })).toHaveValue(
     "",
   );
-  await page.getByRole("link", { name: "今日", exact: true }).click();
-  await planA(page)
-    .getByRole("link", { name: /を編集/ })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "メニュー編集", level: 1 }),
-  ).toBeInViewport();
+  await page.goto("./" + editUrl);
   await expect(page.getByLabel("予定1-1の回数", { exact: true })).toHaveValue(
     "8",
   );
@@ -301,7 +292,10 @@ test("CSV is previewed, quarantined, deduplicated and never remotely uploaded", 
   await expect(
     page.getByRole("status").filter({ hasText: "重複 2件" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "履歴", exact: true }).click();
+  await page.getByRole("link", { name: "分析", exact: true }).click();
+  await page
+    .getByRole("link", { name: "保存したトレーニング記録を確認", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: /CSVのトレーニング履歴/ }),
   ).toHaveCount(1);
@@ -356,6 +350,7 @@ test("an accidental unchanged A copy is removed on update and can be restored", 
   page,
 }) => {
   await page.goto("./");
+  await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(planA(page)).toBeVisible();
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {

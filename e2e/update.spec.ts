@@ -58,7 +58,11 @@ test("real service-worker update replaces cached shell and keeps imported Indexe
   try {
     await page.goto(`http://127.0.0.1:${address.port}/takin-2ku/`);
     await expect(
-      page.getByRole("heading", { name: "マイメニュー", exact: true }),
+      page.getByRole("heading", {
+        name: "今日のコンディション",
+        exact: true,
+        level: 2,
+      }),
     ).toBeVisible();
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
@@ -109,7 +113,13 @@ test("real service-worker update replaces cached shell and keeps imported Indexe
     ).toBeVisible({ timeout: 20000 });
     await page.getByRole("button", { name: "更新する", exact: true }).click();
     await expect(page).toHaveTitle("takin' 2ku test 2");
-    await page.getByRole("link", { name: "履歴", exact: true }).click();
+    await page.getByRole("link", { name: "分析", exact: true }).click();
+    await page
+      .getByRole("link", {
+        name: "保存したトレーニング記録を確認",
+        exact: true,
+      })
+      .click();
     await expect(
       page.getByRole("button", { name: /更新保持の合成記録/ }),
     ).toHaveCount(1);

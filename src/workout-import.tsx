@@ -4,6 +4,7 @@ import { type AppDB, meta, save, revised } from "./db";
 import { displayToKg, rirSchema, formatRir } from "./model";
 import { sessionDay } from "./training";
 import { stableId } from "./csv";
+import { decodeWorkoutCode } from "./workout-code";
 
 const value = z.object({
   weight: z.number().min(0).max(2000),
@@ -226,12 +227,43 @@ export async function importWorkout(db: AppDB, input: WorkoutImport) {
 export function WorkoutImportPanel({ database }: { database: AppDB }) {
   const [preview, setPreview] = useState<WorkoutImport | null>(null),
     [message, setMessage] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [code, setCode] = useState("");
   return (
     <section className="card">
       <h2>日付指定のトレーニング取込</h2>
       <p className="hint">
         本人の記録JSONを端末内で検証して取り込みます。種目は既存IDを再利用。同日・同一セットの実績があればRIRと比較メモだけを修正し、別の履歴は保持します。
+      </p>
+      <label>
+        取込コードまたはJSON
+        <textarea
+          autoComplete="off"
+          spellCheck={false}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+      </label>
+      <button
+        disabled={busy || !code.trim()}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            setPreview(parseWorkoutImport(await decodeWorkoutCode(code)));
+            setCode("");
+            setMessage("");
+          } catch (e) {
+            setPreview(null);
+            setMessage(String(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        内容を確認
+      </button>
+      <p className="hint">
+        コードはこの端末内だけで展開し、外部へ送信しません。Chromeのログインだけでは端末間で記録は共有されません。
       </p>
       <label>
         トレーニングJSONファイル
