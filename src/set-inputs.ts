@@ -11,7 +11,7 @@ export type SetInputs = Pick<
   | "inputUnit"
   | "inputWeight"
 > &
-  Partial<Pick<WorkoutSet, "completedAt">>;
+  Partial<Pick<WorkoutSet, "completedAt" | "inputState" | "notes">>;
 interface Pending {
   id: string;
   token: string;
@@ -28,8 +28,10 @@ const patchSchema = setSchema
     inputUnit: true,
     inputWeight: true,
     completedAt: true,
+    inputState: true,
+    notes: true,
   })
-  .partial({ completedAt: true })
+  .partial({ completedAt: true, inputState: true, notes: true })
   .strict();
 const pendingSchema = z
   .object({

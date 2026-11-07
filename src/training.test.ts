@@ -10,6 +10,7 @@ import {
 } from "./db";
 import { startWorkout, comparison, finishWorkout } from "./training";
 import { localDate } from "./model";
+import { importHealth } from "./health";
 import {
   generateRecommendations,
   decideRecommendation,
@@ -26,6 +27,51 @@ async function setup() {
 afterEach(async () => {
   vi.useRealTimers();
   for (const d of opened.splice(0)) await d.delete();
+});
+it("uses imported sleep as evidence and rechecks short sleep at approval without inventing a performance penalty", async () => {
+  const { d, p } = await setup(),
+    previous = await startWorkout(d, p, "lb");
+  for (const row of await d.sets.where("sessionId").equals(previous).toArray())
+    await save(
+      d,
+      "sets",
+      revised({
+        ...row,
+        completedAt: new Date().toISOString(),
+        rir: { min: 2, max: 2 },
+      }),
+    );
+  await finishWorkout(d, previous);
+  const current = await startWorkout(d, p, "lb"),
+    before = await generateRecommendations(d, current);
+  const increased = before.find((r) =>
+    r.proposedTargets?.some(
+      (t) => t.reps > p.exercises[0].plannedSets![0].reps,
+    ),
+  );
+  expect(increased).toBeDefined();
+  const date = localDate();
+  await importHealth(d, {
+    app: "takin-2ku-health",
+    schemaVersion: 1,
+    samples: [
+      {
+        type: "sleep",
+        source: "Synthetic QA",
+        dateLocal: date,
+        startAt: date + "T00:00:00Z",
+        endAt: date + "T05:00:00Z",
+        stage: "asleep",
+      },
+    ],
+  });
+  await expect(decideRecommendation(d, increased!.id, true)).rejects.toThrow(
+    "疲労",
+  );
+  const after = await generateRecommendations(d, current);
+  expect(after[0].rationale).toContain("6時間未満");
+  expect(after[0].rationale).toContain("300分");
+  expect(after[0].evidenceIds).toContain((await d.health.toArray())[0].id);
 });
 it("seeds exact A/B planned sets, no real history or legs, defaults to lb and four days", async () => {
   const { d, p } = await setup();
@@ -44,6 +90,40 @@ it("seeds exact A/B planned sets, no real history or legs, defaults to lb and fo
   );
   expect(await d.sessions.count()).toBe(0);
   expect((await d.profiles.get("main"))?.targetDaysPerWeek).toBe(4);
+});
+it("bases next targets on latest same-machine actuals rather than stale template weights", async () => {
+  const { d, p } = await setup(),
+    previous = await startWorkout(d, p, "lb"),
+    exercise = p.exercises[0].exerciseId;
+  for (const row of await d.sets.where("sessionId").equals(previous).toArray())
+    await save(
+      d,
+      "sets",
+      revised({
+        ...row,
+        weightKg: row.weightKg * 1.1,
+        reps: 10,
+        completedAt: new Date().toISOString(),
+        rir: { min: 1, max: 2 },
+      }),
+    );
+  await finishWorkout(d, previous);
+  const current = await startWorkout(d, p, "lb"),
+    rec = (await generateRecommendations(d, current)).find(
+      (r) => r.exerciseId === exercise,
+    )!;
+  expect(rec.proposedTargets![0].weightKg).toBeCloseTo(
+    p.exercises[0].plannedWeightKg * 1.1,
+  );
+  expect(rec.proposedTargets![0].reps).toBe(10);
+  await decideRecommendation(d, rec.id, true);
+  const row = await d.sets.get(rec.proposedTargets![0].setId);
+  expect(row?.weightKg).toBe(rec.proposedTargets![0].weightKg);
+  expect(row?.completedAt).toBeNull();
+  expect(row?.inputState?.reps).toBe("");
+  expect((await d.plans.get(p.id))?.exercises[0].plannedWeightKg).toBe(
+    p.exercises[0].plannedWeightKg,
+  );
 });
 it("starts atomically with null actual RIR and separate target RIR and rest", async () => {
   const { d, p } = await setup();

@@ -9,6 +9,7 @@ import {
 } from "./model";
 import { emptyWellness, saveWellness } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
+import { sleepLabel, useSleepState } from "./sleep-sync";
 function Scale({
   label,
   value,
@@ -102,6 +103,7 @@ export function WellnessForm({
     [saving, setSaving] = useState(false),
     [message, setMessage] = useState("");
   const dirty = useRef(false);
+  const sleep = useSleepState();
   useEffect(() => {
     if (existing && !dirty.current) setDraft(existing);
   }, [existing?.id, existing?.revision]);
@@ -164,55 +166,47 @@ export function WellnessForm({
               />
             ))}
           </div>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={draft.painFlag}
-              onChange={(e) =>
-                change({
-                  painFlag: e.target.checked,
-                  explicitInputFlags: {
-                    ...draft.explicitInputFlags,
-                    painFlag: true,
-                  },
-                })
-              }
-            />
-            痛み・体調不良がある
-          </label>
           <div className="sleep-reading">
             <span>睡眠</span>
-            <b>{hours === null ? "未取得" : `${round(hours)}時間`}</b>
+            <b>{sleepLabel(sleep.status, hours)}</b>
           </div>
-          {hours === null && (
+          {sleep.updating && (
+            <p className="hint" role="status">
+              睡眠データを確認中…
+            </p>
+          )}
+          {sleep.status === "error" && hours !== null && (
             <p className="hint">
-              睡眠はショートカットの取得データを利用する予定です。現在は未連携。未取得分を推測・補完しません。
+              保存済みの睡眠：{Math.floor(hours)}時間
+              {Math.round(hours * 60) % 60}分
             </p>
           )}
           <SleepImport database={database} compact />
         </>
       )}
-      <label>
-        体重 ({unit})
-        <input
-          inputMode="decimal"
-          type="number"
-          min="1"
-          step="any"
-          value={
-            draft.bodyWeightKg === null
-              ? ""
-              : round(kgToDisplay(draft.bodyWeightKg, unit))
-          }
-          onChange={(e) =>
-            change({
-              bodyWeightKg: e.target.value
-                ? displayToKg(Number(e.target.value), unit)
-                : null,
-            })
-          }
-        />
-      </label>
+      {bodyOnly && (
+        <label>
+          体重 ({unit})
+          <input
+            inputMode="decimal"
+            type="number"
+            min="1"
+            step="any"
+            value={
+              draft.bodyWeightKg === null
+                ? ""
+                : round(kgToDisplay(draft.bodyWeightKg, unit))
+            }
+            onChange={(e) =>
+              change({
+                bodyWeightKg: e.target.value
+                  ? displayToKg(Number(e.target.value), unit)
+                  : null,
+              })
+            }
+          />
+        </label>
+      )}
       {!bodyOnly && (
         <label>
           体調メモ

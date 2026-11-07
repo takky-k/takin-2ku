@@ -1,5 +1,6 @@
 import { type AppDB, meta, save, revised } from "./db";
 import { type Entities, localDate, kgToDisplay } from "./model";
+import { sleepHoursForDate } from "./health";
 import { comparison, sessionDay } from "./training";
 export function observedIncrement(rows: Entities["sets"][]) {
   const weights = [
@@ -32,13 +33,14 @@ export function largeReduction(
 export async function generateRecommendations(db: AppDB, sessionId: string) {
   const snapshot = await db.transaction(
     "r",
-    [db.sessions, db.sets, db.exercises, db.wellness],
+    [db.sessions, db.sets, db.exercises, db.wellness, db.health],
     async () => ({
       session: await db.sessions.get(sessionId),
       sessions: await db.sessions.toArray(),
       sets: await db.sets.toArray(),
       exercises: await db.exercises.toArray(),
       wellness: await db.wellness.toArray(),
+      health: await db.health.toArray(),
     }),
   );
   const { session: s, sets, exercises, sessions } = snapshot;
@@ -53,6 +55,11 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
         (w.fatigue ?? 0) >= 4 ||
         Object.values(w.sorenessByMuscle).some((n) => n >= 4),
     );
+  const sleepHours =
+    sleepHoursForDate(snapshot.health, localDate()) ??
+    wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
+    null;
+  const shortSleep = sleepHours !== null && sleepHours < 6;
   const recommendations: Entities["recommendations"][] = [];
   for (const e of s.exercises) {
     const current = sets
@@ -82,24 +89,40 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       const previous = evidence[i];
       let weightKg = r.weightKg,
         reps = r.reps;
+      // Untouched targets can follow the latest actual performance on this exact
+      // machine. A manual edit or a safety restriction keeps today's target.
+      if (
+        previous &&
+        !locked &&
+        !pain &&
+        !fatigued &&
+        !shortSleep &&
+        !r.inputState?.weightTouched &&
+        !r.inputState?.repsTouched &&
+        !r.rirRaw
+      ) {
+        weightKg = previous.weightKg;
+        reps = previous.reps;
+      }
       if (
         !pain &&
         !fatigued &&
+        !shortSleep &&
         !locked &&
         previous &&
         previous.rir &&
         previous.rir.min >= 2 &&
-        previous.reps >= r.reps &&
-        Math.abs(previous.weightKg - r.weightKg) < 0.001 &&
+        previous.reps >= reps &&
+        Math.abs(previous.weightKg - weightKg) < 0.001 &&
         r.setType === "normal"
       ) {
         if (
           previous.reps >= 12 &&
           increment !== null &&
-          increment <= Math.min(r.weightKg * 0.025, 2.5) + 0.000001
+          increment <= Math.min(weightKg * 0.025, 2.5) + 0.000001
         )
-          weightKg = r.weightKg + increment;
-        else if (r.reps < 12) reps = Math.min(12, r.reps + 1);
+          weightKg = weightKg + increment;
+        else if (reps < 12) reps = Math.min(12, reps + 1);
       }
       return {
         setId: r.id,
@@ -114,9 +137,11 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
         ? "痛み・体調不良の記録があるため増量しません。継続の可否を本人が確認してください。"
         : fatigued
           ? "疲労・筋肉痛が強いため増量しません。まず休憩、セット数や最終セットRIRの調整を本人が検討してください。"
-          : !evidence.length
-            ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
-            : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
+          : shortSleep
+            ? "取得した睡眠が6時間未満のため、今回は増加を提案しません。具体的なパフォーマンス低下量は推測しません。"
+            : !evidence.length
+              ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
+              : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
     recommendations.push({
       ...meta(),
       sessionId: s.id,
@@ -125,14 +150,19 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       exerciseId: e.exerciseId,
       planId: s.planId ?? "",
       sourceModel: "local-rule",
-      modelVersion: "2.1",
+      modelVersion: "2.2",
       originalWeightKg: current[0].weightKg,
       proposedWeightKg: proposedTargets[0].weightKg,
       proposedTargets,
       rationale:
         rationale +
-        ` 前週同曜日：${history.sameSlot ? sessionDay(history.sameSlot) : "記録なし"}。睡眠：${wellness.some((w) => w.sleepHours !== null) ? "取得値あり" : "未取得（補完なし）"}。`,
-      evidenceIds: evidence.map((r) => r.id),
+        ` 前週同曜日：${history.sameSlot ? sessionDay(history.sameSlot) : "記録なし"}。睡眠：${sleepHours !== null ? `${Math.round(sleepHours * 60)}分（取得値）` : "未取得（補完なし）"}。`,
+      evidenceIds: [
+        ...evidence.map((r) => r.id),
+        ...snapshot.health
+          .filter((h) => !h.deletedAt && h.dateLocal === localDate())
+          .map((h) => h.id),
+      ],
       predictedPerformance: null,
       actualPerformance: null,
       confidence: null,
@@ -157,6 +187,7 @@ export async function decideRecommendation(
       db.sessions,
       db.sets,
       db.wellness,
+      db.health,
       db.exercises,
       db.queue,
     ],
@@ -179,6 +210,19 @@ export async function decideRecommendation(
           wellness = (await db.wellness.toArray()).filter(
             (w) => !w.deletedAt && w.dateLocal === localDate(),
           );
+        const sleepHours =
+          sleepHoursForDate(await db.health.toArray(), localDate()) ??
+          wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
+          null;
+        const history = comparison(
+          await db.sessions.toArray(),
+          await db.sets.toArray(),
+          r.exerciseId,
+          s.exercises.find((e) => e.exerciseId === r.exerciseId)?.equipmentId ??
+            "",
+          new Date(s.startedAt),
+          s.id,
+        ).previousSets;
         for (const target of r.proposedTargets) {
           const row = await db.sets.get(target.setId);
           if (
@@ -192,9 +236,23 @@ export async function decideRecommendation(
             throw Error("セットが変更されています。提案を作り直してください");
           const increase =
             target.weightKg > row.weightKg + 0.000001 || target.reps > row.reps;
+          const previous = history[r.proposedTargets.indexOf(target)],
+            useActual =
+              previous &&
+              r.evidenceIds.includes(previous.id) &&
+              !row.inputState?.weightTouched &&
+              !row.inputState?.repsTouched &&
+              !row.rirRaw;
+          if (useActual && previous.updatedAt > r.createdAt)
+            throw Error(
+              "比較する履歴が変更されています。提案を作り直してください",
+            );
+          const baseWeight = useActual ? previous.weightKg : row.weightKg,
+            baseReps = useActual ? previous.reps : row.reps;
           if (
             increase &&
-            (row.isLocked ||
+            ((sleepHours !== null && sleepHours < 6) ||
+              row.isLocked ||
               exercise?.autoProgression === false ||
               wellness.some(
                 (w) =>
@@ -208,8 +266,8 @@ export async function decideRecommendation(
             );
           if (
             target.weightKg >
-              Math.min(row.weightKg * 1.025, row.weightKg + 2.5) + 0.000001 ||
-            target.reps > row.reps + 1 ||
+              Math.min(baseWeight * 1.025, baseWeight + 2.5) + 0.000001 ||
+            target.reps > baseReps + 1 ||
             target.weightKg < 0 ||
             target.reps < 0
           )
@@ -223,6 +281,14 @@ export async function decideRecommendation(
               inputWeight: kgToDisplay(target.weightKg, row.inputUnit ?? "kg"),
               reps: target.reps,
               targetRir: target.targetRir,
+              inputState: row.inputState
+                ? {
+                    ...row.inputState,
+                    weight: String(
+                      kgToDisplay(target.weightKg, row.inputUnit ?? "kg"),
+                    ),
+                  }
+                : undefined,
             }),
           );
         }

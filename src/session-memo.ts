@@ -1,16 +1,27 @@
 import { type Entities, localDate } from "./model";
+import { sleepHoursForDate } from "./health";
 import { sessionDay } from "./training";
 export function buildSessionMemo(
   session: Entities["sessions"],
   sessions: Entities["sessions"][],
   sets: Entities["sets"][],
   wellness: Entities["wellness"][],
+  health: Entities["health"][] = [],
 ) {
   const day = sessionDay(session),
     logs = wellness
       .filter((w) => !w.deletedAt && w.dateLocal === day)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     notes: string[] = [];
+  const sleep =
+    sleepHoursForDate(health, day) ??
+    logs.find((w) => w.sleepHours !== null)?.sleepHours ??
+    null;
+  notes.push(
+    sleep === null
+      ? "睡眠データは未取得です。疲労や回復度を補完しません。"
+      : `取得した睡眠は${Math.round(sleep * 60)}分です。${sleep < 6 ? "短時間睡眠のため増加を見送り、実際の調子を確認しましょう。" : "睡眠時間だけでは回復度を断定しません。"}`,
+  );
   const fatigue = logs.find((w) => w.fatigue !== null)?.fatigue ?? null,
     mood = logs.find((w) => w.mood !== null)?.mood ?? null;
   const soreness = Math.max(

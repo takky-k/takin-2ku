@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   NavLink,
   Route,
@@ -74,6 +74,10 @@ import { buildSessionMemo } from "./session-memo";
 import { cleanAccidentalACopies, restoreMenuCopies } from "./menu-cleanup";
 import { SleepImport } from "./health";
 import { restorePendingSetInputs } from "./set-inputs";
+import { useAppRefresh } from "./app-lifecycle";
+import { WorkoutImportPanel } from "./workout-import";
+import { exportTrainingCsv } from "./training-export";
+import { SleepConnectionSettings } from "./SleepConnection";
 
 const text = {
   ja: {
@@ -129,10 +133,20 @@ export function App() {
     [online, setOnline] = useState(navigator.onLine),
     [storage, setStorage] = useState("確認中");
   const [removedCopies, setRemovedCopies] = useState<Entities["plans"][]>([]);
+  const registration = useRef<ServiceWorkerRegistration | null>(null);
   const {
     needRefresh: [refresh],
     updateServiceWorker,
-  } = useRegisterSW();
+  } = useRegisterSW({
+    onRegisteredSW(_url, reg) {
+      registration.current = reg ?? null;
+      void reg?.update().catch(() => {});
+    },
+  });
+  const checkUpdate = useCallback(async () => {
+    await registration.current?.update();
+  }, []);
+  const appDate = useAppRefresh(database, checkUpdate);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -224,7 +238,7 @@ export function App() {
           </Link>
         )}
         <Routes key={database.name}>
-          <Route path="/" element={<Today />} />
+          <Route path="/" element={<Today key={appDate} />} />
           <Route path="/workout" element={<Workout />} />
           <Route path="/plans/new" element={<PlanEditRoute />} />
           <Route path="/plans/:planId/edit" element={<PlanEditRoute />} />
@@ -484,7 +498,7 @@ function Workout() {
                       (r) => r.sessionId === s.id && r.completedAt,
                     ).length
                   }
-                  セット完了。未完了のセットは実績・分析に含みません。
+                  セット入力済み。回数が未入力の予定セットは実績・分析に含みません。
                 </p>
                 <p className="hint">Apple Healthへの書き込みは行いません。</p>
                 <div className="actions">
@@ -581,7 +595,14 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
       ordinal: (last?.ordinal ?? -1) + 1,
       setType: "normal",
       weightKg: last?.weightKg ?? 0,
-      reps: last?.reps ?? 8,
+      reps: 0,
+      inputState: {
+        weight: String(round(kgToDisplay(last?.weightKg ?? 0, unit))),
+        reps: "",
+        rir: "",
+        weightTouched: false,
+        repsTouched: false,
+      },
       rir: null,
       targetRir: last?.targetRir ?? null,
       inputUnit: unit,
@@ -610,11 +631,15 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
       </section>
       <section className="card session-memo">
         <h3>今日のトレーニングメモ</h3>
-        {buildSessionMemo(s, data.sessions, data.sets, data.wellness).map(
-          (note, i) => (
-            <p key={i}>{note}</p>
-          ),
-        )}
+        {buildSessionMemo(
+          s,
+          data.sessions,
+          data.sets,
+          data.wellness,
+          data.health,
+        ).map((note, i) => (
+          <p key={i}>{note}</p>
+        ))}
         <small className="hint">
           記録から作成するローカル分析 · 外部送信なし
         </small>
@@ -707,9 +732,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                   フォーム動画 ↗
                 </a>
               ))}
-              <small>
-                本人のメモ。医学的な効果を保証するものではありません。
-              </small>
             </aside>
 
             {!prev.length && otherHistory.length > 0 && (
@@ -739,7 +761,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
               rows={rows}
               previous={prev}
               unit={unit}
-              onCompleted={timer}
             />
             <div className="actions">
               <button
@@ -1371,10 +1392,25 @@ function Settings({ storage }: { storage: string }) {
       </section>
       <section className="card">
         <SleepImport database={database} />
+        <SleepConnectionSettings database={database} />
       </section>
       <CsvImport key={database.name} database={database} />
+      <WorkoutImportPanel database={database} />
       <section className="card">
         <h2>バックアップと復元</h2>
+        <button
+          onClick={() =>
+            run(async () =>
+              download(
+                await exportTrainingCsv(database),
+                `takin-2ku-${localDate()}.csv`,
+                "text/csv;charset=utf-8",
+              ),
+            )
+          }
+        >
+          実績CSVを書き出す
+        </button>
         <p className="hint">
           対象：{demo ? "デモ専用DB" : "実記録DB"}
           。削除情報も含め、全エンティティを書き出します。競合する既存IDは上書きせず保持します。
@@ -1491,7 +1527,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.2.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.3.0 / ローカル版</p>
       </section>
     </>
   );

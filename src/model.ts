@@ -127,6 +127,22 @@ export const setSchema = metaSchema.extend({
   rirConfidence: z.enum(["exact", "range", "unknown", "unverified"]).optional(),
   sourceRowId: z.string().optional(),
   isLocked: z.boolean().optional(),
+  inputState: z
+    .object({
+      weight: z.string(),
+      reps: z.string(),
+      rir: z.string(),
+      weightTouched: z.boolean(),
+      repsTouched: z.boolean(),
+    })
+    .optional(),
+  referencePrevious: z
+    .object({
+      weightKg: z.number().nonnegative(),
+      reps: z.number().int().nonnegative(),
+      rir: rirSchema,
+    })
+    .optional(),
 });
 export const wellnessSchema = metaSchema.extend({
   sessionId: z.string().nullable(),
