@@ -23,6 +23,9 @@ async function finish(page: Page) {
     page.getByRole("dialog", { name: "トレーニング完了の確認" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "完了を確定", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "トレーニング完了の確認" }),
+  ).toHaveCount(0);
 }
 test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   page,
@@ -135,6 +138,10 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await page.getByLabel("体重 (lb)", { exact: true }).fill("160");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("体重 (lb)", { exact: true })).toHaveValue(
+    "160",
+  );
   await page.getByRole("link", { name: "履歴", exact: true }).click();
   await expect(page.getByRole("button", { name: /A｜/ })).toHaveCount(1);
   await context.setOffline(false);
