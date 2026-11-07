@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { HashRouter, NavLink, Route, Routes, Link } from "react-router-dom";
+import {
+  NavLink,
+  Route,
+  Routes,
+  Link,
+  useNavigate,
+  useParams,
+  useLocation,
+} from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Activity,
@@ -9,11 +17,9 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Plus,
-  Check,
   ArrowUp,
   ArrowDown,
   Trash2,
-  Copy,
   Play,
   Download,
 } from "lucide-react";
@@ -39,20 +45,17 @@ import {
   exportBackup,
   parseBackup,
   importBackup,
-  type AppDB,
   type Backup,
 } from "./db";
 import {
   type Entities,
   type WorkoutSet,
-  parseRir,
   formatRir,
   kgToDisplay,
-  displayToKg,
   round,
   localDate,
 } from "./model";
-import { epley, weeklySummary, suggest } from "./analysis";
+import { epley, weeklySummary } from "./analysis";
 import { useUI } from "./store";
 import "./style.css";
 import { PlanEditor } from "./PlanEditor";
@@ -65,6 +68,12 @@ import {
   finishWorkout,
 } from "./training";
 import { AdvicePanel } from "./AdvicePanel";
+import { WellnessForm } from "./WellnessForm";
+import { SetTable } from "./SetTable";
+import { buildSessionMemo } from "./session-memo";
+import { cleanAccidentalACopies, restoreMenuCopies } from "./menu-cleanup";
+import { SleepImport } from "./health";
+import { restorePendingSetInputs } from "./set-inputs";
 
 const text = {
   ja: {
@@ -89,6 +98,7 @@ function useData() {
       sessions: alive(await database.sessions.toArray()),
       sets: alive(await database.sets.toArray()),
       wellness: alive(await database.wellness.toArray()),
+      health: alive(await database.health.toArray()),
       recommendations: alive(await database.recommendations.toArray()),
       profile: await database.profiles.get("main"),
       pending: await database.queue.count(),
@@ -113,10 +123,12 @@ const date = (s: string) =>
     weekday: "short",
   });
 export function App() {
+  const route = useLocation();
   const { data, database } = useData(),
-    { demo, toggleDemo, error, setError } = useUI(),
+    { error, setError } = useUI(),
     [online, setOnline] = useState(navigator.onLine),
     [storage, setStorage] = useState("確認中");
+  const [removedCopies, setRemovedCopies] = useState<Entities["plans"][]>([]);
   const {
     needRefresh: [refresh],
     updateServiceWorker,
@@ -127,6 +139,9 @@ export function App() {
     window.addEventListener("offline", update);
     run(async () => {
       await seed(db);
+      await restorePendingSetInputs(db);
+      const removed = await cleanAccidentalACopies(db);
+      if (removed.length) setRemovedCopies(removed);
       await seed(demoDb, true);
       setStorage(
         navigator.storage?.persisted && (await navigator.storage.persisted())
@@ -142,13 +157,20 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = data?.profile?.theme ?? "dark";
   }, [data?.profile?.theme]);
+  useEffect(() => {
+    if (!route.hash) window.scrollTo(0, 0);
+  }, [route.pathname, route.hash]);
   return (
     <>
       <header>
         <Link to="/" className="brand">
-          <span className="brand-icon">
-            <Activity size={22} />
-          </span>
+          <img
+            className="brand-logo"
+            src="./brand/t2-header.png"
+            alt="T2"
+            width="54"
+            height="29"
+          />
           takin' 2ku<span className="phase">LOCAL</span>
         </Link>
         <div className="status">
@@ -161,14 +183,22 @@ export function App() {
         </Link>
       </header>
       <main>
-        <div className="mode-strip">
-          <span>
-            {demo ? "デモ専用データを表示中" : "あなたのペースで、積み重ねる。"}
-          </span>
-          <button onClick={toggleDemo}>
-            {demo ? "実データに戻る" : "デモを見る"}
-          </button>
-        </div>
+        {removedCopies.length > 0 && (
+          <div className="notice" role="status">
+            誤って複製したAメニューを削除しました。
+            <button
+              onClick={() =>
+                run(async () => {
+                  await restoreMenuCopies(database, removedCopies);
+                  setRemovedCopies([]);
+                })
+              }
+            >
+              元に戻す
+            </button>
+          </div>
+        )}
+
         {error && (
           <div role="alert" className="notice danger">
             {error}
@@ -196,6 +226,8 @@ export function App() {
         <Routes key={database.name}>
           <Route path="/" element={<Today />} />
           <Route path="/workout" element={<Workout />} />
+          <Route path="/plans/new" element={<PlanEditRoute />} />
+          <Route path="/plans/:planId/edit" element={<PlanEditRoute />} />
           <Route path="/history" element={<History />} />
           <Route path="/analysis" element={<Analysis />} />
           <Route path="/ai" element={<Advice />} />
@@ -244,30 +276,27 @@ function Title({
 }
 function Today() {
   const { database, data } = useData();
-  const [editing, setEditing] = useState<Entities["plans"] | null>(null),
-    [checkin, setCheckin] = useState(false);
+  const route = useLocation();
+  useEffect(() => {
+    if (data && route.hash === "#menus")
+      document.getElementById("menus")?.scrollIntoView({ block: "start" });
+  }, [!!data, route.key]);
   if (!data?.profile) return <p>ローカルデータを準備中…</p>;
   const active = data.sessions.find((s) => s.status === "active"),
-    weekly = weeklySummary(data.sessions, data.sets);
-  const latest = data.sessions
-    .filter((s) => s.status === "finished")
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-  async function start(p: Entities["plans"]) {
-    await startWorkout(database, p, data!.profile!.units);
-    location.hash = "/workout";
-  }
+    weekly = weeklySummary(data.sessions, data.sets),
+    latest = data.sessions
+      .filter((s) => s.status === "finished")
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
   return (
     <>
-      <Title
-        eyebrow={new Date().toLocaleDateString("ja-JP", {
+      <h1 className="sr-only">今日のトレーニング</h1>
+      <p className="today-date">
+        {new Date().toLocaleDateString("ja-JP", {
           month: "long",
           day: "numeric",
           weekday: "long",
         })}
-        title="今日も、一歩ずつ。"
-      >
-        <span className="tag">{data.profile.goal}</span>
-      </Title>
+      </p>
       <section className="hero">
         <div className="hero-top">
           <span>今週のトレーニング</span>
@@ -281,43 +310,25 @@ function Today() {
           max={data.profile.targetDaysPerWeek}
           value={weekly.sessions}
         />
-        <p>積み重ねた記録が、次の一歩になる。</p>
       </section>
-      <div className="section-heading">
+      <section className="card condition-card">
         <h2>今日のコンディション</h2>
-        <button onClick={() => setCheckin(!checkin)}>チェックイン</button>
-      </div>
-      {checkin ? (
         <WellnessEditor />
-      ) : (
-        <section className="card muted">
-          疲労・筋肉痛の入力は任意です。睡眠：未取得。
-        </section>
-      )}
+      </section>
       {active && (
         <Link className="button primary full" to="/workout">
-          <Play size={18} />
           トレーニングを再開
         </Link>
       )}
-      <div className="section-heading">
+      <div className="section-heading" id="menus">
         <h2>マイメニュー</h2>
-        <button
-          onClick={() =>
-            setEditing({
-              ...meta(),
-              name: "新しいメニュー",
-              dayLabel: "",
-              exercises: [],
-            })
-          }
-        >
+        <Link className="button" to="/plans/new">
           <Plus size={18} />
           作成
-        </button>
+        </Link>
       </div>
       {data.plans.map((p) => (
-        <section className="card" key={p.id}>
+        <section className="card menu-card" key={p.id}>
           <span className="eyebrow">
             {p.dayLabel || "曜日・部位は自由に設定"}
           </span>
@@ -337,38 +348,26 @@ function Today() {
             <button
               className="primary"
               disabled={!!active || !p.exercises.length}
-              onClick={() => run(() => start(p))}
+              onClick={() =>
+                run(async () => {
+                  await startWorkout(database, p, data.profile!.units);
+                  window.location.hash = "/workout";
+                })
+              }
             >
               <Play size={17} />
               開始する
             </button>
-            <button onClick={() => setEditing(p)}>編集</button>
-            <button
-              aria-label={`${p.name}を複製`}
-              onClick={() =>
-                run(() =>
-                  save(database, "plans", {
-                    ...p,
-                    ...meta(),
-                    name: p.name + " コピー",
-                  }),
-                )
-              }
+            <Link
+              className="button"
+              to={`/plans/${p.id}/edit`}
+              aria-label={`${p.name}を編集`}
             >
-              <Copy size={18} />
-            </button>
+              編集
+            </Link>
           </div>
         </section>
       ))}
-      {editing && (
-        <PlanEditor
-          plan={editing}
-          database={database}
-          exercises={data.exercises}
-          unit={data.profile.units}
-          close={() => setEditing(null)}
-        />
-      )}
       <h2>直近のトレーニング</h2>
       {latest ? (
         <Link to="/history" className="card history-link">
@@ -379,13 +378,47 @@ function Today() {
           <span>詳細 →</span>
         </Link>
       ) : (
-        <section className="card muted">
-          まだ記録がありません。メニューを選んで始めましょう。
+        <section className="card muted">まだ記録がありません。</section>
+      )}
+    </>
+  );
+}
+function PlanEditRoute() {
+  const { planId } = useParams(),
+    navigate = useNavigate(),
+    { database, data } = useData();
+  const [newPlan] = useState<Entities["plans"]>(() => ({
+    ...meta(),
+    name: "新しいメニュー",
+    dayLabel: "",
+    exercises: [],
+  }));
+  if (!data?.profile) return <p>メニューを読み込み中…</p>;
+  const plan = planId ? data.plans.find((p) => p.id === planId) : newPlan;
+  return (
+    <>
+      <Title eyebrow="MENU" title="メニュー編集" />
+      {plan ? (
+        <PlanEditor
+          key={plan.id}
+          plan={plan}
+          database={database}
+          exercises={data.exercises}
+          unit={data.profile.units}
+          close={() => navigate("/#menus")}
+        />
+      ) : (
+        <section className="card">
+          <p>このメニューは見つかりません。</p>
+          <Link className="button" to="/">
+            今日へ戻る
+          </Link>
         </section>
       )}
     </>
   );
 }
+
 function previousSets(
   sessions: Entities["sessions"][],
   sets: WorkoutSet[],
@@ -546,7 +579,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
       equipmentId: s.exercises.find((e) => e.exerciseId === exerciseId)!
         .equipmentId,
       ordinal: (last?.ordinal ?? -1) + 1,
-      setType: last?.setType ?? "normal",
+      setType: "normal",
       weightKg: last?.weightKg ?? 0,
       reps: last?.reps ?? 8,
       rir: null,
@@ -575,12 +608,17 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           {s.status === "active" ? "記録中 · 自動保存" : "保存済み"}
         </span>
       </section>
-      {s.generalNotes && (
-        <section className="card">
-          <h3>メニュー共通メモ</h3>
-          <p>{s.generalNotes}</p>
-        </section>
-      )}
+      <section className="card session-memo">
+        <h3>今日のトレーニングメモ</h3>
+        {buildSessionMemo(s, data.sessions, data.sets, data.wellness).map(
+          (note, i) => (
+            <p key={i}>{note}</p>
+          ),
+        )}
+        <small className="hint">
+          記録から作成するローカル分析 · 外部送信なし
+        </small>
+      </section>
       {s.status === "active" && (
         <Link className="button full" to="/ai">
           開始前の提案を確認（承認するまで予定は変更しません）
@@ -673,17 +711,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                 本人のメモ。医学的な効果を保証するものではありません。
               </small>
             </aside>
-            <p className="previous">
-              前回：
-              {prev.length
-                ? prev
-                    .map(
-                      (p) =>
-                        `${round(kgToDisplay(p.weightKg, unit))}${unit} × ${p.reps}回 / RIR ${formatRir(p.rir)}`,
-                    )
-                    .join(" ｜ ")
-                : "記録なし"}
-            </p>
+
             {!prev.length && otherHistory.length > 0 && (
               <p className="notice">
                 機種・重量基準が異なる/未確認の参考履歴：
@@ -706,62 +734,13 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                 ? date(sessionDay(comparisons.sameSlot) + "T12:00:00")
                 : "記録なし"}
             </p>
-            <label>
-              今回の種目メモ
-              <input
-                value={e.notes}
-                onChange={(ev) =>
-                  run(() =>
-                    save(
-                      database,
-                      "sessions",
-                      revised({
-                        ...s,
-                        exercises: s.exercises.map((x) =>
-                          x.exerciseId === e.exerciseId
-                            ? { ...x, notes: ev.target.value }
-                            : x,
-                        ),
-                      }),
-                    ),
-                  )
-                }
-              />
-            </label>
-            {rows.map((row, n) => (
-              <SetEditor
-                key={row.id}
-                row={row}
-                index={n}
-                unit={unit}
-                previous={prev[n]}
-                completed={() =>
-                  timer(row.restSeconds ?? form?.defaultRestSeconds ?? 120)
-                }
-                move={async (delta) => {
-                  const other = rows[n + delta];
-                  if (other)
-                    await database.transaction(
-                      "rw",
-                      [database.sets, database.queue],
-                      async () => {
-                        await save(
-                          database,
-                          "sets",
-                          revised({ ...row, ordinal: other.ordinal }),
-                        );
-                        await save(
-                          database,
-                          "sets",
-                          revised({ ...other, ordinal: row.ordinal }),
-                        );
-                      },
-                    );
-                }}
-                canUp={n > 0}
-                canDown={n < rows.length - 1}
-              />
-            ))}
+            <SetTable
+              database={database}
+              rows={rows}
+              previous={prev}
+              unit={unit}
+              onCompleted={timer}
+            />
             <div className="actions">
               <button
                 className="full"
@@ -890,8 +869,21 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
         <span>
           休憩 <b>{Math.ceil(Math.max(0, until - now) / 1000)}秒</b>
         </span>
-        <button onClick={() => timer(120)}>2分</button>
-        <button onClick={() => timer(180)}>3分</button>
+        {[30, 60, 90, 120, 150].map((seconds) => (
+          <button key={seconds} onClick={() => timer(seconds)}>
+            {
+              (
+                {
+                  30: "30秒",
+                  60: "1分",
+                  90: "1分30秒",
+                  120: "2分",
+                  150: "2分30秒",
+                } as Record<number, string>
+              )[seconds]
+            }
+          </button>
+        ))}
         <button aria-label="タイマー停止" onClick={() => timer(0)}>
           停止
         </button>
@@ -902,458 +894,28 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
     </>
   );
 }
-function SetEditor({
-  row,
-  index,
-  unit,
-  previous,
-  completed,
-  move,
-  canUp,
-  canDown,
-}: {
-  row: WorkoutSet;
-  index: number;
-  unit: "kg" | "lb";
-  previous?: WorkoutSet;
-  completed: () => void;
-  move: (d: number) => Promise<void>;
-  canUp: boolean;
-  canDown: boolean;
-}) {
-  const { database } = useData(),
-    [error, setError] = useState(""),
-    [deleted, setDeleted] = useState(false),
-    [askRir, setAskRir] = useState(false);
-  const draftKey = `takin-draft-${database.name}-${row.id}-${unit}`;
-  const [draft, setDraft] = useState(() => {
-    try {
-      const cached = localStorage.getItem(draftKey);
-      if (cached)
-        return JSON.parse(cached) as {
-          weight: string;
-          reps: string;
-          rir: string;
-        };
-    } catch {
-      /* DB remains primary store */
-    }
-    return {
-      weight: String(round(kgToDisplay(row.weightKg, unit))),
-      reps: String(row.reps),
-      rir: row.rir === null ? "" : formatRir(row.rir),
-    };
-  });
-  const { weight, reps, rir } = draft;
-  const edit = (key: keyof typeof draft, value: string) => {
-    const next = { ...draft, [key]: value };
-    setDraft(next);
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(next));
-    } catch {
-      setError(
-        "入力途中の補助保存が利用できません。完了後に保存状態を確認してください。",
-      );
-    }
-    void commit({}, next);
-  };
-  const commit = async (patch: Partial<WorkoutSet> = {}, fields = draft) => {
-    try {
-      const parsedRir = parseRir(fields.rir);
-      const next = {
-        ...row,
-        weightKg:
-          fields.weight === String(round(kgToDisplay(row.weightKg, unit)))
-            ? row.weightKg
-            : displayToKg(Number(fields.weight), unit),
-        reps: Number(fields.reps),
-        rir: parsedRir,
-        rirRaw: fields.rir,
-        rirConfidence: parsedRir
-          ? parsedRir.min === parsedRir.max
-            ? ("exact" as const)
-            : ("range" as const)
-          : ("unknown" as const),
-        inputUnit:
-          fields.weight === String(round(kgToDisplay(row.weightKg, unit)))
-            ? (row.inputUnit ?? unit)
-            : unit,
-        inputWeight:
-          fields.weight === String(round(kgToDisplay(row.weightKg, unit)))
-            ? (row.inputWeight ??
-              kgToDisplay(row.weightKg, row.inputUnit ?? unit))
-            : Number(fields.weight),
-        ...patch,
-      };
-      if (fields.weight.trim() === "" || fields.reps.trim() === "")
-        throw Error("重量と回数を入力してください");
-      await save(database, "sets", revised(next));
-      setError("");
-      return true;
-    } catch (e) {
-      setError(String(e));
-      return false;
-    }
-  };
-  return (
-    <div className={`set-row ${row.completedAt ? "done" : ""}`}>
-      <div className="set-top">
-        <b>SET {index + 1}</b>
-        <select
-          aria-label={`セット${index + 1}の種別`}
-          value={row.setType}
-          onChange={(e) =>
-            run(() =>
-              commit({ setType: e.target.value as WorkoutSet["setType"] }),
-            )
-          }
-        >
-          {Object.entries({
-            warmup: "ウォームアップ",
-            normal: "通常",
-            drop: "ドロップ",
-            failure: "失敗",
-          }).map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <button
-          className={row.completedAt ? "complete active" : "complete"}
-          aria-label={`セット${index + 1}${row.completedAt ? "を未完了にする" : "を完了"}`}
-          onClick={() =>
-            run(async () => {
-              if (
-                await commit({
-                  completedAt: row.completedAt
-                    ? null
-                    : new Date().toISOString(),
-                })
-              )
-                if (!row.completedAt) {
-                  completed();
-                  setAskRir(true);
-                }
-            })
-          }
-        >
-          <Check size={20} />
-        </button>
-      </div>
-      <p className="hint">
-        目標RIR：{formatRir(row.targetRir ?? null)} /
-        実測は任意・未入力は空欄のまま
-        {row.loadMode
-          ? ` / 重量基準：${({ plateStack: "スタック表示", dumbbellEach: "ダンベル片手", total: "合計", eachSide: "片側", bodyweight: "自重", assisted: "補助重量", barbellTotal: "バー込み合計", unknown: "未確認" } as Record<string, string>)[row.loadMode] ?? row.loadMode}`
-          : ""}
-      </p>
-      {askRir && (
-        <div role="dialog" aria-label="実測RIRの確認" className="notice">
-          <b>今のセットは、あと何回できましたか？</b>
-          <p className="hint">0は限界。記録しなければ未入力のままです。</p>
-          <div className="actions compact">
-            {["0", "0.5", "1", "1〜2", "2", "3"].map((v) => (
-              <button
-                key={v}
-                onClick={() => {
-                  edit("rir", v);
-                  setAskRir(false);
-                }}
-              >
-                実測 {v}
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                edit("rir", "");
-                setAskRir(false);
-              }}
-            >
-              未入力で続ける
-            </button>
-            <button onClick={() => setAskRir(false)}>入力欄で編集</button>
-          </div>
-        </div>
-      )}
-      <div className="input-grid">
-        <label>
-          {unit}
-          <input
-            aria-label={`セット${index + 1}の重量`}
-            inputMode="decimal"
-            type="number"
-            step="any"
-            min="0"
-            value={weight}
-            onChange={(e) => edit("weight", e.target.value)}
-            onBlur={() => void commit()}
-          />
-        </label>
-        <label>
-          回数
-          <input
-            aria-label={`セット${index + 1}の回数`}
-            inputMode="numeric"
-            type="number"
-            min="0"
-            step="1"
-            value={reps}
-            onChange={(e) => edit("reps", e.target.value)}
-            onBlur={() => void commit()}
-          />
-        </label>
-        <label>
-          RIR
-          <input
-            aria-label={`セット${index + 1}のRIR`}
-            inputMode="decimal"
-            placeholder="未入力"
-            value={rir}
-            onChange={(e) => edit("rir", e.target.value)}
-            onBlur={() => void commit()}
-          />
-        </label>
-      </div>
-      <div className="actions compact" aria-label="RIRの候補">
-        {["", "0", "0.5", "1", "1〜2", "2", "3"].map((v) => (
-          <button key={v} onClick={() => edit("rir", v)}>
-            {v || "未入力"}
-          </button>
-        ))}
-      </div>
-      <div className="actions compact">
-        <button
-          disabled={!previous}
-          onClick={() => {
-            if (previous) {
-              const next = {
-                weight: String(round(kgToDisplay(previous.weightKg, unit))),
-                reps: String(previous.reps),
-                rir: "",
-              };
-              setDraft(next);
-              localStorage.setItem(draftKey, JSON.stringify(next));
-            }
-            if (previous)
-              run(() =>
-                save(
-                  database,
-                  "sets",
-                  revised({
-                    ...row,
-                    weightKg: previous.weightKg,
-                    reps: previous.reps,
-                    rir: null,
-                    targetRir: row.targetRir ?? previous.rir,
-                    inputUnit: previous.inputUnit,
-                    inputWeight: previous.inputWeight,
-                  }),
-                ),
-              );
-          }}
-        >
-          前回をコピー
-        </button>
-        <button
-          disabled={!canUp}
-          aria-label="セットを上へ"
-          onClick={() => run(() => move(-1))}
-        >
-          <ArrowUp size={15} />
-        </button>
-        <button
-          disabled={!canDown}
-          aria-label="セットを下へ"
-          onClick={() => run(() => move(1))}
-        >
-          <ArrowDown size={15} />
-        </button>
-        <button
-          aria-label={deleted ? "削除を確定" : `セット${index + 1}を削除`}
-          onClick={() => {
-            if (!deleted) {
-              setDeleted(true);
-              return;
-            }
-            run(() => remove(database, "sets", row));
-          }}
-        >
-          {deleted ? "削除を確定" : <Trash2 size={16} />}
-        </button>
-        {deleted && <button onClick={() => setDeleted(false)}>取消</button>}
-      </div>
-      <label>
-        セットメモ
-        <input
-          aria-label={`セット${index + 1}のメモ`}
-          value={row.notes}
-          onChange={(e) => void commit({ notes: e.target.value })}
-        />
-      </label>
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
+
 function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
-  const { database, data } = useData();
-  if (!data) return null;
-  const existing = data.wellness.find((w) =>
-    sessionId
-      ? w.sessionId === sessionId
-      : w.dateLocal === localDate() && w.sessionId === null,
-  );
-  const value: Entities["wellness"] = existing ?? {
-    ...meta(),
-    sessionId,
-    dateLocal: localDate(),
-    sleepHours: null,
-    mood: null,
-    fatigue: null,
-    painFlag: false,
-    sorenessByMuscle: {},
-    bodyWeightKg: null,
-    notes: "",
-  };
-  const update = (patch: Partial<Entities["wellness"]>) =>
-    run(() =>
-      save(
-        database,
-        "wellness",
-        revised({
-          ...value,
-          ...patch,
-          explicitInputFlags: {
-            ...value.explicitInputFlags,
-            ...Object.fromEntries(
-              Object.entries(patch).map(([k, v]) => [
-                k,
-                v !== null && v !== "",
-              ]),
-            ),
-          },
-          sleepStatus: value.sleepStatus ?? "not-acquired",
-        }),
-      ),
-    );
+  const { data, database } = useData();
+  if (!data?.profile) return null;
+  const existing = data.wellness
+    .filter((w) =>
+      sessionId
+        ? w.sessionId === sessionId
+        : w.dateLocal === localDate() && w.sessionId === null,
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   return (
-    <div className="wellness">
-      <p className="hint">
-        {existing
-          ? `記録済み · 更新 ${new Date(existing.updatedAt).toLocaleString("ja-JP")}`
-          : "任意 · まだ未入力。スキップできます。"}
-      </p>
-      <div className="input-grid">
-        <div className="sleep-status">
-          <small>睡眠</small>
-          <p>
-            {value.sleepHours === null
-              ? "未取得"
-              : `${value.sleepHours} h（既存記録）`}
-          </p>
-        </div>
-        <label>
-          気分
-          <select
-            value={value.mood ?? ""}
-            onChange={(e) =>
-              update({ mood: e.target.value ? Number(e.target.value) : null })
-            }
-          >
-            <option value="">未入力</option>
-            {[1, 2, 3, 4, 5].map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          疲労
-          <select
-            value={value.fatigue ?? ""}
-            onChange={(e) =>
-              update({
-                fatigue: e.target.value ? Number(e.target.value) : null,
-              })
-            }
-          >
-            <option value="">未入力</option>
-            {[1, 2, 3, 4, 5].map((v) => (
-              <option key={v}>{v}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p className="hint">
-        睡眠はショートカットの取得データを利用する予定です。現在は未連携。未取得分を推測・補完しません。
-      </p>
-      <div className="filter">
-        {["胸", "背中", "肩", "腕"].map((m) => (
-          <label key={m}>
-            {m}の筋肉痛
-            <select
-              aria-label={`${m}の筋肉痛`}
-              value={value.sorenessByMuscle[m] ?? ""}
-              onChange={(e) => {
-                const soreness = { ...value.sorenessByMuscle };
-                if (e.target.value === "") delete soreness[m];
-                else soreness[m] = Number(e.target.value);
-                update({ sorenessByMuscle: soreness });
-              }}
-            >
-              <option value="">未入力</option>
-              {[0, 1, 2, 3, 4, 5].map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-          </label>
-        ))}
-      </div>
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={value.painFlag}
-          onChange={(e) => update({ painFlag: e.target.checked })}
-        />
-        痛み・体調不良がある
-      </label>
-      <label>
-        体重 ({data.profile?.units ?? "kg"})
-        <input
-          inputMode="decimal"
-          type="number"
-          min="1"
-          step="any"
-          value={
-            value.bodyWeightKg === null
-              ? ""
-              : round(
-                  kgToDisplay(value.bodyWeightKg, data.profile?.units ?? "kg"),
-                )
-          }
-          onChange={(e) =>
-            update({
-              bodyWeightKg: e.target.value
-                ? displayToKg(
-                    Number(e.target.value),
-                    data.profile?.units ?? "kg",
-                  )
-                : null,
-            })
-          }
-        />
-      </label>
-      <label>
-        体調メモ
-        <input
-          value={value.notes}
-          onChange={(e) => update({ notes: e.target.value })}
-        />
-      </label>
-    </div>
+    <WellnessForm
+      key={database.name + "-" + (sessionId ?? localDate())}
+      database={database}
+      existing={existing}
+      sessionId={sessionId}
+      unit={data.profile.units}
+      health={data.health}
+      date={existing?.dateLocal ?? localDate()}
+      bodyOnly={sessionId !== null}
+    />
   );
 }
 function History() {
@@ -1807,6 +1369,9 @@ function Settings({ storage }: { storage: string }) {
           </form>
         )}
       </section>
+      <section className="card">
+        <SleepImport database={database} />
+      </section>
       <CsvImport key={database.name} database={database} />
       <section className="card">
         <h2>バックアップと復元</h2>
@@ -1923,10 +1488,10 @@ function Settings({ storage }: { storage: string }) {
         </p>
         <h3>Apple Health</h3>
         <p className="hint">
-          ショートカット経由の読み取りを将来対応予定です。現在は未連携・実機未検証。ワークアウトを含め、Apple
-          Healthへの書き込み機能は実装しません。
+          ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
+          Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.1.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.2.0 / ローカル版</p>
       </section>
     </>
   );

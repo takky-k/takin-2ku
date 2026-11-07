@@ -22,22 +22,29 @@ afterEach(async () => {
   await demoDb.delete();
   useUI.setState({ demo: false, error: "" });
 });
-it("renders Japanese local mode and separates demo and real history", async () => {
+it("renders the simplified dashboard without slogans, copy or demo controls", async () => {
   render(
     <HashRouter>
       <App />
     </HashRouter>,
   );
   expect(
-    await screen.findByRole("heading", { name: "今日も、一歩ずつ。" }),
+    await screen.findByRole("heading", { name: "今日のトレーニング" }),
   ).toBeInTheDocument();
   expect(
     await screen.findByRole("heading", { name: "A｜背中・リアデルト・二頭筋" }),
   ).toBeInTheDocument();
   await waitFor(async () => expect(await demoDb.sessions.count()).toBe(6));
   expect(await db.sessions.count()).toBe(0);
-  fireEvent.click(screen.getByRole("button", { name: "デモを見る" }));
-  expect(await screen.findByText("デモ専用データを表示中")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "実データに戻る" }));
+  expect(
+    screen.queryByRole("button", { name: "デモを見る" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText("今日も、一歩ずつ。")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("あなたのペースで、積み重ねる。"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /複製/ }),
+  ).not.toBeInTheDocument();
   expect(await db.sessions.count()).toBe(0);
 });

@@ -1,4 +1,4 @@
-import { it, expect, afterEach } from "vitest";
+import { it, expect, afterEach, vi } from "vitest";
 import {
   AppDB,
   seed,
@@ -24,6 +24,7 @@ async function setup() {
   return { d, p };
 }
 afterEach(async () => {
+  vi.useRealTimers();
   for (const d of opened.splice(0)) await d.delete();
 });
 it("seeds exact A/B planned sets, no real history or legs, defaults to lb and four days", async () => {
@@ -134,6 +135,34 @@ it("migrates v2 JSON without losing existing records", async () => {
 it("flags large reductions without calling them medical thresholds", () => {
   expect(largeReduction(100, 89, 10, 7).review).toBe(true);
   expect(largeReduction(100, 90, 10, 8).review).toBe(false);
+});
+it("does not finalize an incomplete range input, and finishing twice keeps the original end time", async () => {
+  const { d, p } = await setup();
+  const id = await startWorkout(d, p, "lb"),
+    row = (await d.sets.where("sessionId").equals(id).toArray())[0];
+  await save(
+    d,
+    "sets",
+    revised({
+      ...row,
+      completedAt: new Date().toISOString(),
+      rir: { min: 1, max: 1 },
+    }),
+  );
+  const key = `takin-table-draft-${d.name}-${row.id}-lb`;
+  localStorage.setItem(
+    key,
+    JSON.stringify({ weight: "100", reps: "8", rir: "1~" }),
+  );
+  await expect(finishWorkout(d, id)).rejects.toThrow("入力途中");
+  expect((await d.sessions.get(id))?.status).toBe("active");
+  localStorage.removeItem(key);
+  await finishWorkout(d, id);
+  const ended = (await d.sessions.get(id))!.endedAt;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(Date.parse(ended!) + 60000));
+  await finishWorkout(d, id);
+  expect((await d.sessions.get(id))?.endedAt).toBe(ended);
 });
 it("rechecks new pain before approval, preserves null wellness, and keeps fixed shrug locked", async () => {
   const { d, p } = await setup();
