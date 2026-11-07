@@ -1,3 +1,4 @@
+import { fatigueForMuscle, sorenessForMuscle } from "./wellness";
 import { type Entities, localDate } from "./model";
 import { sleepHoursForDate } from "./health";
 import { sessionDay } from "./training";
@@ -22,11 +23,16 @@ export function buildSessionMemo(
       ? "睡眠データは未取得です。疲労や回復度を補完しません。"
       : `取得した睡眠は${Math.round(sleep * 60)}分です。${sleep < 6 ? "短時間睡眠のため増加を見送り、実際の調子を確認しましょう。" : "睡眠時間だけでは回復度を断定しません。"}`,
   );
-  const fatigue = logs.find((w) => w.fatigue !== null)?.fatigue ?? null,
+  const muscleFatigue = logs
+    .flatMap((w) => session.exercises.map((e) => fatigueForMuscle(w, e.muscle)))
+    .filter((n): n is number => n !== null);
+  const fatigue = muscleFatigue.length ? Math.max(...muscleFatigue) : null,
     mood = logs.find((w) => w.mood !== null)?.mood ?? null;
   const soreness = Math.max(
     0,
-    ...logs.flatMap((w) => Object.values(w.sorenessByMuscle)),
+    ...logs.flatMap((w) =>
+      session.exercises.map((e) => sorenessForMuscle(w, e.muscle) ?? 0),
+    ),
   );
   if (logs.some((w) => w.painFlag))
     notes.push(

@@ -1100,26 +1100,6 @@ input[type="number"]::-webkit-outer-spin-button {
   font-size: 12px;
   min-height: 110px;
 }
-.target-review {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-.target-review h3 {
-  font-size: 16px;
-  margin: 0 0 8px;
-}
-.target-review p {
-  font-size: 14px;
-  margin: 4px 0;
-}
-.target-review summary {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  color: var(--muted);
-  cursor: pointer;
-}
 @media (min-width: 650px) {
   .soreness-scales {
     display: grid;
@@ -1136,4 +1116,11 @@ input[type="number"]::-webkit-outer-spin-button {
   .previous-result {
     font-size: 13px;
   }
+}
+
+header .status {
+  font-size: 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  gap: 4px;
 }

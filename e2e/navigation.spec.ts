@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { gzipSync } from "node:zlib";
-test("private import counts once in analysis, and start targets use history and saved condition after approval", async ({
+test("private import counts once in analysis, and start targets use history and the saved menu-specific condition directly", async ({
   page,
 }) => {
   await page.clock.setFixedTime(new Date("2026-11-07T20:00:00Z"));
@@ -21,8 +21,12 @@ test("private import counts once in analysis, and start targets use history and 
       .getByRole("link", { name: "履歴", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("slider", { name: "全身の筋肉疲労", exact: true })
-    .press("End");
+    .getByRole("combobox", { name: "今日のメニュー", exact: true })
+    .selectOption({ label: "B｜胸・肩・三頭筋" });
+  for (const slider of await page
+    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .all())
+    await slider.press("End");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
   const names = [
@@ -105,15 +109,7 @@ test("private import counts once in analysis, and start targets use history and 
   await b.getByRole("button", { name: "開始する", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("table")).toHaveCount(0);
-  await expect(page.locator(".target-review").first()).toContainText(
-    "20lb × 6回",
-  );
-  await expect(page.locator(".target-review").first()).toContainText("疲労");
-  await page
-    .getByRole("button", { name: "この目標で開始", exact: true })
-    .click();
+  ).toHaveCount(0);
   const first = page.locator(".exercise-card").first();
   await expect(first.getByLabel("セット1の重量", { exact: true })).toHaveValue(
     "20",

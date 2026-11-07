@@ -1,5 +1,43 @@
 import { type AppDB, meta, save, revised } from "./db";
 import { type Entities, localDate } from "./model";
+export function plannedMuscles(
+  plan: Entities["plans"],
+  exercises: Entities["exercises"][],
+) {
+  return [
+    ...new Set(
+      plan.exercises
+        .map(
+          (t) =>
+            exercises.find((e) => e.id === t.exerciseId && !e.deletedAt)
+              ?.muscle,
+        )
+        .filter((m): m is string => !!m),
+    ),
+  ];
+}
+export function fatigueForMuscle(
+  log: Entities["wellness"],
+  muscle: string,
+): number | null {
+  return log.fatigueByMuscle !== undefined
+    ? (log.fatigueByMuscle[muscle] ?? null)
+    : log.fatigue;
+}
+export function sorenessForMuscle(log: Entities["wellness"], muscle: string) {
+  const group = muscle.includes("上腕")
+    ? "腕"
+    : muscle === "僧帽筋"
+      ? "背中"
+      : muscle.split(/[（(]/)[0];
+  return log.sorenessByMuscle[muscle] ?? log.sorenessByMuscle[group] ?? null;
+}
+export function isMuscleFatigued(log: Entities["wellness"], muscle: string) {
+  return (
+    (fatigueForMuscle(log, muscle) ?? 0) >= 4 ||
+    (sorenessForMuscle(log, muscle) ?? 0) >= 4
+  );
+}
 export function emptyWellness(
   sessionId: string | null,
   date = localDate(),
@@ -41,6 +79,12 @@ export async function saveWellness(db: AppDB, draft: Entities["wellness"]) {
         ...draft.explicitInputFlags,
         mood: draft.mood !== null,
         fatigue: draft.fatigue !== null,
+        ...Object.fromEntries(
+          Object.keys(draft.fatigueByMuscle ?? {}).map((m) => [
+            "fatigue:" + m,
+            true,
+          ]),
+        ),
         bodyWeightKg: draft.bodyWeightKg !== null,
         ...Object.fromEntries(
           [

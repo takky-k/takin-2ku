@@ -62,7 +62,7 @@ export function AdvicePanel({ database }: { database: AppDB }) {
             >
               提案を作成
             </button>
-            <Link className="button full" to="/workout">
+            <Link className="button full" to="/workout/current">
               記録に戻る
             </Link>
           </>

@@ -1,3 +1,4 @@
+import { isMuscleFatigued } from "./wellness";
 import { type AppDB, meta, save, revised } from "./db";
 import { type Entities, localDate, kgToDisplay } from "./model";
 import { sleepHoursForDate } from "./health";
@@ -49,12 +50,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
   const wellness = snapshot.wellness.filter(
       (w) => !w.deletedAt && w.dateLocal === localDate(),
     ),
-    pain = wellness.some((w) => w.painFlag),
-    fatigued = wellness.some(
-      (w) =>
-        (w.fatigue ?? 0) >= 4 ||
-        Object.values(w.sorenessByMuscle).some((n) => n >= 4),
-    );
+    pain = wellness.some((w) => w.painFlag);
   const sleepHours =
     sleepHoursForDate(snapshot.health, localDate()) ??
     wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
@@ -63,6 +59,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
   const lowMood = wellness.some((w) => w.mood !== null && w.mood <= 2);
   const recommendations: Entities["recommendations"][] = [];
   for (const e of s.exercises) {
+    const fatigued = wellness.some((w) => isMuscleFatigued(w, e.muscle));
     const current = sets
       .filter(
         (r) =>
@@ -157,7 +154,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       exerciseId: e.exerciseId,
       planId: s.planId ?? "",
       sourceModel: "local-rule",
-      modelVersion: "2.3",
+      modelVersion: "2.4",
       originalWeightKg: current[0].weightKg,
       proposedWeightKg: proposedTargets[0].weightKg,
       proposedTargets,
@@ -267,8 +264,13 @@ export async function decideRecommendation(
                 (w) =>
                   w.painFlag ||
                   (w.mood !== null && w.mood <= 2) ||
-                  (w.fatigue ?? 0) >= 4 ||
-                  Object.values(w.sorenessByMuscle).some((n) => n >= 4),
+                  isMuscleFatigued(
+                    w,
+                    exercise?.muscle ??
+                      s.exercises.find((e) => e.exerciseId === r.exerciseId)
+                        ?.muscle ??
+                      "",
+                  ),
               ))
           )
             throw Error(
