@@ -1,4 +1,6 @@
 import type { Entities, WorkoutSet } from "./model";
+import { localDate } from "./model";
+import { sessionDay } from "./training";
 export const epley = (s: WorkoutSet) =>
   s.reps >= 1 && s.reps <= 12 && s.weightKg > 0
     ? s.weightKg * (1 + s.reps / 30)
@@ -15,8 +17,8 @@ export function weeklySummary(
     (s) =>
       !s.deletedAt &&
       s.status === "finished" &&
-      new Date(s.startedAt) >= start &&
-      new Date(s.startedAt) <= now,
+      sessionDay(s) >= localDate(start) &&
+      sessionDay(s) <= localDate(now),
   );
   const muscles: Record<string, { sets: number; frequency: number }> = {};
   for (const s of eligible) {

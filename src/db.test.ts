@@ -96,5 +96,5 @@ it("upgrades an actual IndexedDB v1 database", async () => {
   const upgraded = new AppDB(name);
   opened.push(upgraded);
   expect((await upgraded.sets.toArray())[0].rir).toEqual({ min: 0, max: 0 });
-  expect((await upgraded.sets.toArray())[0].schemaVersion).toBe(2);
+  expect((await upgraded.sets.toArray())[0].schemaVersion).toBe(3);
 });

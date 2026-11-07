@@ -1,7 +1,8 @@
 import { z } from "zod";
 export const metaSchema = z.object({
   id: z.string().min(1),
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
+  source: z.string().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   deletedAt: z.iso.datetime().nullable(),
@@ -39,8 +40,34 @@ export const exerciseSchema = metaSchema.extend({
   muscle: z.string().min(1),
   equipmentId: z.string(),
   notes: z.string(),
-  measurementBasis: z.enum(["total", "eachSide", "plateStack", "bodyweight"]),
+  evergreenNotes: z.string().optional(),
+  historicalNotes: z.string().optional(),
+  category: z.enum(["compound", "isolation", "other"]).optional(),
+  defaultRestSeconds: z.number().nonnegative().optional(),
+  autoProgression: z.boolean().optional(),
+  formVideoUrls: z.array(z.url()).optional(),
+  measurementBasis: z.enum([
+    "total",
+    "eachSide",
+    "plateStack",
+    "bodyweight",
+    "assisted",
+    "dumbbellEach",
+    "barbellTotal",
+    "unknown",
+  ]),
 });
+export const plannedSetSchema = z.object({
+  id: z.string(),
+  weightKg: z.number().min(0).max(2000),
+  inputUnit: z.enum(["kg", "lb"]),
+  inputWeight: z.number().min(0),
+  reps: z.number().int().min(0).max(1000),
+  targetRir: rirSchema,
+  setType: z.enum(["warmup", "normal", "drop", "failure"]),
+  isLocked: z.boolean(),
+});
+export type PlannedSet = z.infer<typeof plannedSetSchema>;
 export const targetSchema = z.object({
   exerciseId: z.string(),
   targetSets: z.number().int().min(1).max(20),
@@ -48,10 +75,13 @@ export const targetSchema = z.object({
   repMax: z.number().int().min(0),
   targetRir: rirSchema,
   plannedWeightKg: z.number().min(0),
+  plannedSets: z.array(plannedSetSchema).min(1).max(20).optional(),
 });
 export const planSchema = metaSchema.extend({
   name: z.string().min(1),
   dayLabel: z.string(),
+  generalNotes: z.string().optional(),
+  catalogKey: z.string().optional(),
   exercises: z.array(targetSchema),
 });
 export const snapshotSchema = z.object({
@@ -60,6 +90,8 @@ export const snapshotSchema = z.object({
   muscle: z.string(),
   equipmentId: z.string(),
   notes: z.string(),
+  evergreenNotes: z.string().optional(),
+  measurementBasis: z.string().optional(),
 });
 export const sessionSchema = metaSchema.extend({
   name: z.string(),
@@ -69,6 +101,10 @@ export const sessionSchema = metaSchema.extend({
   planId: z.string().nullable(),
   exercises: z.array(snapshotSchema),
   notes: z.string(),
+  performedDateLocal: z.string().optional(),
+  timePrecision: z.enum(["timestamp", "date"]).optional(),
+  slotLabel: z.string().optional(),
+  generalNotes: z.string().optional(),
 });
 export const setSchema = metaSchema.extend({
   sessionId: z.string(),
@@ -83,6 +119,14 @@ export const setSchema = metaSchema.extend({
   completedAt: z.iso.datetime().nullable(),
   notes: z.string(),
   restSeconds: z.number().min(0).nullable(),
+  inputUnit: z.enum(["kg", "lb"]).optional(),
+  inputWeight: z.number().nonnegative().optional(),
+  loadMode: z.string().optional(),
+  targetRir: rirSchema.optional(),
+  rirRaw: z.string().optional(),
+  rirConfidence: z.enum(["exact", "range", "unknown", "unverified"]).optional(),
+  sourceRowId: z.string().optional(),
+  isLocked: z.boolean().optional(),
 });
 export const wellnessSchema = metaSchema.extend({
   sessionId: z.string().nullable(),
@@ -94,6 +138,10 @@ export const wellnessSchema = metaSchema.extend({
   sorenessByMuscle: z.record(z.string(), z.number().min(0).max(5)),
   bodyWeightKg: z.number().positive().nullable(),
   notes: z.string(),
+  explicitInputFlags: z.record(z.string(), z.boolean()).optional(),
+  sleepStatus: z
+    .enum(["not-acquired", "available", "failed", "no-measurement"])
+    .optional(),
 });
 export const recommendationSchema = metaSchema.extend({
   exerciseId: z.string(),
@@ -109,6 +157,19 @@ export const recommendationSchema = metaSchema.extend({
   confidence: z.number().nullable(),
   status: z.enum(["draft", "accepted", "rejected", "edited"]),
   decisionAt: z.iso.datetime().nullable(),
+  sessionId: z.string().optional(),
+  proposedTargets: z
+    .array(
+      z.object({
+        setId: z.string(),
+        weightKg: z.number(),
+        reps: z.number().int(),
+        targetRir: rirSchema,
+      }),
+    )
+    .optional(),
+  sessionRevision: z.number().optional(),
+  setRevisions: z.record(z.string(), z.number()).optional(),
 });
 export const healthSchema = metaSchema.extend({
   type: z.string(),
@@ -127,6 +188,23 @@ export const profileSchema = metaSchema.extend({
   theme: z.enum(["dark", "light"]),
   priorityMuscles: z.array(z.string()),
 });
+export const importRowSchema = metaSchema.extend({
+  sourceHash: z.string(),
+  batchId: z.string(),
+  rowNumber: z.number().int(),
+  raw: z.record(z.string(), z.string()),
+  issues: z.array(z.string()),
+  status: z.enum(["imported", "review", "excluded"]),
+  setId: z.string().nullable(),
+  dateLocal: z.string(),
+});
+export const importBatchSchema = metaSchema.extend({
+  fileName: z.string(),
+  fileHash: z.string(),
+  rowCount: z.number().int(),
+  importedCount: z.number().int(),
+  reviewCount: z.number().int(),
+});
 export const schemas = {
   exercises: exerciseSchema,
   plans: planSchema,
@@ -136,6 +214,8 @@ export const schemas = {
   recommendations: recommendationSchema,
   health: healthSchema,
   profiles: profileSchema,
+  importRows: importRowSchema,
+  importBatches: importBatchSchema,
 };
 export type EntityName = keyof typeof schemas;
 export type Entities = { [K in EntityName]: z.infer<(typeof schemas)[K]> };

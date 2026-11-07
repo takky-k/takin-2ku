@@ -31,6 +31,8 @@ export class AppDB extends Dexie {
   recommendations!: Table<Entities["recommendations"]>;
   health!: Table<Entities["health"]>;
   profiles!: Table<Entities["profiles"]>;
+  importRows!: Table<Entities["importRows"]>;
+  importBatches!: Table<Entities["importBatches"]>;
   queue!: Table<SyncOperation>;
   constructor(name: string) {
     super(name);
@@ -45,12 +47,30 @@ export class AppDB extends Dexie {
             if (typeof s.rir === "number") s.rir = { min: s.rir, max: s.rir };
             s.schemaVersion = 2;
           });
-        for (const key of Object.keys(schemas).filter((k) => k !== "sets"))
+        for (const key of Object.keys(stores).filter(
+          (k) => k !== "sets" && k !== "queue",
+        ))
           await tx
             .table(key)
             .toCollection()
             .modify((r) => {
               r.schemaVersion = 2;
+            });
+      });
+    this.version(3)
+      .stores({
+        ...stores,
+        importRows: "id,sourceHash,batchId,status",
+        importBatches: "id,fileHash",
+      })
+      .upgrade(async (tx) => {
+        for (const key of Object.keys(schemas))
+          await tx
+            .table(key)
+            .toCollection()
+            .modify((row) => {
+              row.schemaVersion = 3;
+              row.source ??= "legacy-v2";
             });
       });
   }
@@ -74,7 +94,8 @@ export function meta(): Meta {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
-    schemaVersion: 2,
+    schemaVersion: 3,
+    source: "manual",
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -143,7 +164,7 @@ export async function deleteSession(db: AppDB, id: string) {
 const backupSchema = z
   .object({
     app: z.literal("takin-2ku"),
-    schemaVersion: z.literal(2),
+    schemaVersion: z.literal(3),
     exportedAt: z.iso.datetime(),
     data: z
       .object({
@@ -155,6 +176,8 @@ const backupSchema = z
         recommendations: z.array(schemas.recommendations),
         health: z.array(schemas.health),
         profiles: z.array(schemas.profiles),
+        importRows: z.array(schemas.importRows),
+        importBatches: z.array(schemas.importBatches),
       })
       .strict(),
   })
@@ -167,7 +190,7 @@ export async function exportBackup(db: AppDB): Promise<Backup> {
       data[key] = await db.table(key).toArray();
     return backupSchema.parse({
       app: "takin-2ku",
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: new Date().toISOString(),
       data,
     });
@@ -175,18 +198,20 @@ export async function exportBackup(db: AppDB): Promise<Backup> {
 }
 export function parseBackup(text: string): Backup {
   const raw = JSON.parse(text);
-  if (raw.schemaVersion === 1) {
-    raw.schemaVersion = 2;
+  if (raw.schemaVersion === 1 || raw.schemaVersion === 2) {
+    raw.schemaVersion = 3;
     for (const [key, rows] of Object.entries(raw.data) as [
       string,
       Record<string, unknown>[],
     ][]) {
       for (const row of rows) {
-        row.schemaVersion = 2;
+        row.schemaVersion = 3;
         if (key === "sets" && typeof row.rir === "number")
           row.rir = { min: row.rir, max: row.rir };
       }
     }
+    raw.data.importRows ??= [];
+    raw.data.importBatches ??= [];
   }
   const b = backupSchema.parse(raw);
   for (const rows of Object.values(b.data)) {
@@ -233,110 +258,4 @@ export async function importBackup(db: AppDB, b: Backup) {
   });
   return { added, duplicates, conflicts };
 }
-export async function seed(db: AppDB, demo = false) {
-  if (await db.profiles.count()) return;
-  await db.transaction(
-    "rw",
-    [
-      db.profiles,
-      db.exercises,
-      db.plans,
-      db.sessions,
-      db.sets,
-      db.wellness,
-      db.queue,
-    ],
-    async () => {
-      if (await db.profiles.count()) return;
-      await save(db, "profiles", {
-        ...meta(),
-        id: "main",
-        units: "kg",
-        goal: "筋肥大",
-        targetDaysPerWeek: 3,
-        targetWeightKg: null,
-        theme: "dark",
-        priorityMuscles: ["胸", "背中", "脚"],
-      });
-      const exercises = [
-        ["ベンチプレス", "胸", "フリーウェイト"],
-        ["ラットプルダウン", "背中", "ケーブル A"],
-        ["スクワット", "脚", "パワーラック"],
-      ].map(([name, muscle, equipmentId]) => ({
-        ...meta(),
-        name,
-        muscle,
-        equipmentId,
-        notes: "",
-        measurementBasis: "total" as const,
-      }));
-      for (const e of exercises) await save(db, "exercises", e);
-      const p = {
-        ...meta(),
-        name: "全身ベーシック",
-        dayLabel: "月・水・金 / 全身",
-        exercises: exercises.map((e) => ({
-          exerciseId: e.id,
-          targetSets: 3,
-          repMin: 8,
-          repMax: 12,
-          targetRir: { min: 1, max: 2 },
-          plannedWeightKg: 20,
-        })),
-      };
-      await save(db, "plans", p);
-      if (demo)
-        for (let n = 0; n < 6; n++) {
-          const start = new Date(
-            Date.now() - (19 - n * 3) * 86400000,
-          ).toISOString();
-          const s = {
-            ...meta(),
-            name: p.name,
-            startedAt: start,
-            endedAt: start,
-            status: "finished" as const,
-            planId: p.id,
-            notes: "デモ記録",
-            exercises: exercises.map((e) => ({
-              exerciseId: e.id,
-              name: e.name,
-              muscle: e.muscle,
-              equipmentId: e.equipmentId,
-              notes: "",
-            })),
-          };
-          await save(db, "sessions", s);
-          for (const [i, e] of exercises.entries())
-            for (let ordinal = 0; ordinal < 3; ordinal++)
-              await save(db, "sets", {
-                ...meta(),
-                sessionId: s.id,
-                exerciseId: e.id,
-                equipmentId: e.equipmentId,
-                ordinal,
-                setType: "normal",
-                weightKg: 30 + i * 10 + n * 2.5,
-                reps: 8 + (n % 3),
-                rir: { min: 1, max: 2 },
-                rpe: null,
-                completedAt: start,
-                notes: "",
-                restSeconds: 90,
-              });
-          await save(db, "wellness", {
-            ...meta(),
-            sessionId: s.id,
-            dateLocal: start.slice(0, 10),
-            sleepHours: 7,
-            mood: 4,
-            fatigue: 2,
-            painFlag: false,
-            sorenessByMuscle: {},
-            bodyWeightKg: 70 - n * 0.2,
-            notes: "",
-          });
-        }
-    },
-  );
-}
+export { seed, installDefaultPlans } from "./catalog-db";

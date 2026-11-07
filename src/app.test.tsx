@@ -32,7 +32,7 @@ it("renders Japanese local mode and separates demo and real history", async () =
     await screen.findByRole("heading", { name: "今日も、一歩ずつ。" }),
   ).toBeInTheDocument();
   expect(
-    await screen.findByRole("heading", { name: "全身ベーシック" }),
+    await screen.findByRole("heading", { name: "A｜背中・リアデルト・二頭筋" }),
   ).toBeInTheDocument();
   await waitFor(async () => expect(await demoDb.sessions.count()).toBe(6));
   expect(await db.sessions.count()).toBe(0);
