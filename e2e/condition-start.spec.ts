@@ -1,13 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 const card = (p: Page, key: string) =>
-  p
-    .locator(".menu-card")
-    .filter({
-      has: p.getByRole("heading", {
-        name: key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
-        exact: true,
-      }),
-    });
+  p.locator(".menu-card").filter({
+    has: p.getByRole("heading", {
+      name: key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
+      exact: true,
+    }),
+  });
 async function saveCondition(page: Page, key: string) {
   await expect(
     page
@@ -52,6 +50,7 @@ test("record tab always opens menu picker and preserves both drafts while requir
   await a.getByLabel("セット1の重量", { exact: true }).fill("82");
   await a.getByLabel("セット1の回数", { exact: true }).fill("7");
   await a.getByLabel("セット1のRIR", { exact: true }).fill("1~2");
+  await a.getByLabel("セット1のRIR", { exact: true }).blur();
   await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(page).toHaveURL(/#\/workout$/);
   await expect(

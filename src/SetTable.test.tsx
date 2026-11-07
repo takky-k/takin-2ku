@@ -64,3 +64,26 @@ it("does not quantize canonical kg when a displayed unit conversion is saved wit
   );
   expect((await db.sets.get(row.id))?.weightKg).toBe(row.weightKg);
 });
+it("records RIR zero with unchanged default reps and preserves empty RIR on the other sets", async () => {
+  const { db, id, row } = await setup();
+  render(<SetTable database={db} rows={[row]} previous={[]} unit="lb" />);
+  fireEvent.change(screen.getByLabelText("セット1のRIR"), {
+    target: { value: "0" },
+  });
+  await waitFor(async () =>
+    expect((await db.sets.get(row.id))?.completedAt).not.toBeNull(),
+  );
+  expect((await db.sets.get(row.id))?.reps).toBe(row.reps);
+  expect((await db.sets.get(row.id))?.repsSource).toBe("default");
+  expect(screen.getByLabelText("セット1の回数")).toHaveValue(null);
+  await finishWorkout(db, id);
+  expect((await db.sets.get(row.id))?.rir).toEqual({ min: 0, max: 0 });
+  const others = (await db.sets.where("sessionId").equals(id).toArray()).filter(
+    (r) => r.id !== row.id,
+  );
+  expect(
+    others.every(
+      (r) => r.completedAt && r.rir === null && r.repsSource === "default",
+    ),
+  ).toBe(true);
+});

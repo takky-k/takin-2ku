@@ -1124,3 +1124,88 @@ header .status {
   flex-shrink: 0;
   gap: 4px;
 }
+
+html[data-keyboard-editing="true"] nav,
+html[data-keyboard-editing="true"] .timer {
+  visibility: hidden;
+  pointer-events: none;
+}
+.session-memo > summary,
+.evergreen-notes > summary,
+.set-notes > summary {
+  cursor: pointer;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.session-memo > summary,
+.evergreen-notes > summary {
+  padding: 8px 0;
+}
+.compact-sheet .set-column {
+  width: 24px;
+}
+.compact-sheet .previous-column {
+  width: 58px;
+}
+.compact-sheet .delete-column {
+  width: 42px;
+}
+.compact-sheet .delete-last {
+  min-width: 36px;
+}
+.compact-sheet .previous-cell {
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+}
+.previous-cell span {
+  display: block;
+  white-space: nowrap;
+}
+.compact-sheet th {
+  font-size: 10px;
+}
+.compact-sheet td {
+  padding: 4px 2px;
+}
+.compact-sheet input:not([type="checkbox"]) {
+  padding: 5px 2px;
+  min-height: 44px;
+}
+.exercise-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 12px;
+}
+.exercise-actions button {
+  height: 40px;
+  min-height: 40px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.exercise-actions button:first-child {
+  flex: 1;
+}
+.exercise-actions button:last-child {
+  width: 40px;
+  flex-shrink: 0;
+}
+.set-notes {
+  margin-top: 4px;
+}
+.set-notes table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.set-notes th {
+  font-size: 11px;
+  width: 32px;
+}
+.set-notes textarea {
+  width: 100%;
+  font-size: 14px;
+  min-height: 48px;
+}

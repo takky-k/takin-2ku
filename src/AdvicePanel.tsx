@@ -2,10 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { AppDB } from "./db";
-import {
-  generateRecommendations,
-  decideRecommendation,
-} from "./recommendations";
+import { refreshTargets } from "./start-targets";
 import { kgToDisplay, round, formatRir } from "./model";
 export function AdvicePanel({ database }: { database: AppDB }) {
   const data = useLiveQuery(
@@ -48,7 +45,7 @@ export function AdvicePanel({ database }: { database: AppDB }) {
         <span className="tag">ローカルルール · 外部送信なし</span>
         <h2>今日の予定を確認する</h2>
         <p className="muted">
-          承認した候補は当該セッションの未完了セットだけに反映します。テンプレートや過去の実績は変更しません。
+          保存済みコンディションから安全な目標を再計算し、未入力のセットへ自動反映します。記録済みセットやマイメニューは変更しません。
         </p>
         {active ? (
           <>
@@ -57,10 +54,10 @@ export function AdvicePanel({ database }: { database: AppDB }) {
               disabled={busy}
               className="primary full"
               onClick={() =>
-                void perform(() => generateRecommendations(database, active.id))
+                void perform(() => refreshTargets(database, active.id))
               }
             >
-              提案を作成
+              目標を再計算して自動反映
             </button>
             <Link className="button full" to="/workout/current">
               記録に戻る
@@ -104,35 +101,13 @@ export function AdvicePanel({ database }: { database: AppDB }) {
               local-rule v{r.modelVersion} · 根拠 {r.evidenceIds.length}セット ·
               信頼度未評価
             </p>
-            {r.status === "draft" ? (
-              <div className="actions">
-                <button
-                  disabled={busy}
-                  className="primary"
-                  onClick={() =>
-                    void perform(() =>
-                      decideRecommendation(database, r.id, true),
-                    )
-                  }
-                >
-                  承認して今回に反映
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void perform(() =>
-                      decideRecommendation(database, r.id, false),
-                    )
-                  }
-                >
-                  却下
-                </button>
-              </div>
-            ) : (
-              <span className="tag">
-                {r.status === "accepted" ? "承認済み" : "却下済み"}
-              </span>
-            )}
+            <span className="tag">
+              {r.status === "accepted"
+                ? "自動反映済み"
+                : r.status === "rejected"
+                  ? "見送り"
+                  : "未適用・再計算で自動反映"}
+            </span>
           </section>
         ))}
     </>

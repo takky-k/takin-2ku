@@ -1,3 +1,4 @@
+import { useKeyboardEditing } from "./useKeyboardEditing";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   NavLink,
@@ -16,8 +17,6 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Plus,
-  ArrowUp,
-  ArrowDown,
   Trash2,
   Play,
   Download,
@@ -60,7 +59,7 @@ import "./style.css";
 import { PlanEditor } from "./PlanEditor";
 import { CsvImport } from "./CsvImport";
 import { installDefaultPlans } from "./db";
-import { sessionDay, comparison, finishWorkout } from "./training";
+import { sessionDay, finishWorkout, skipExerciseToday } from "./training";
 import { AdvicePanel } from "./AdvicePanel";
 import { WellnessForm } from "./WellnessForm";
 import { SetTable } from "./SetTable";
@@ -122,6 +121,7 @@ const date = (s: string) =>
     weekday: "short",
   });
 export function App() {
+  useKeyboardEditing();
   const route = useLocation();
   const { data, database } = useData(),
     { error, setError } = useUI(),
@@ -497,6 +497,10 @@ function Workout() {
         <>
           <SessionEditor session={s} />
           <section className="card">
+            <h2>トレーニング後の体重</h2>
+            <WellnessEditor sessionId={s.id} />
+          </section>
+          <section className="card">
             <h2>今回のトレーニングを終了</h2>
             <button className="primary full" onClick={() => setFinishing(true)}>
               トレーニングを終了
@@ -509,22 +513,14 @@ function Workout() {
               >
                 <h3>今回の記録を確認</h3>
                 <p>
-                  {
-                    data!.sets.filter(
-                      (r) => r.sessionId === s.id && r.completedAt,
-                    ).length
-                  }
-                  セット入力済み。回数が未入力の予定セットは実績・分析に含みません。
+                  {data!.sets.filter((r) => r.sessionId === s.id).length}
+                  セットを保存します。回数が未変更なら、薄く表示された目標回数を使用します。やらなかった種目・セットは先に外してください。
                 </p>
                 <p className="hint">Apple Healthへの書き込みは行いません。</p>
                 <div className="actions">
                   <button
                     className="primary"
-                    disabled={
-                      !data!.sets.some(
-                        (r) => r.sessionId === s.id && r.completedAt,
-                      )
-                    }
+                    disabled={!data!.sets.some((r) => r.sessionId === s.id)}
                     onClick={() =>
                       run(async () => {
                         await finishWorkout(database, s.id);
@@ -586,11 +582,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
   }, []);
   if (!data?.profile) return null;
   const unit = data.profile.units;
-  async function moveExercise(i: number, delta: number) {
-    const items = [...s.exercises];
-    [items[i], items[i + delta]] = [items[i + delta], items[i]];
-    await save(database, "sessions", revised({ ...s, exercises: items }));
-  }
   async function addSet(exerciseId: string) {
     const rows = data!.sets
         .filter((r) => r.sessionId === s.id && r.exerciseId === exerciseId)
@@ -639,8 +630,8 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           {s.status === "active" ? "記録中 · 自動保存" : "保存済み"}
         </span>
       </section>
-      <section className="card session-memo">
-        <h3>今日のトレーニングメモ</h3>
+      <details className="card session-memo">
+        <summary>今日のトレーニングメモ</summary>
         {buildSessionMemo(
           s,
           data.sessions,
@@ -653,12 +644,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
         <small className="hint">
           記録から作成するローカル分析 · 外部送信なし
         </small>
-      </section>
-      {s.status === "active" && (
-        <Link className="button full" to="/ai">
-          開始前の提案を確認（承認するまで予定は変更しません）
-        </Link>
-      )}
+      </details>
       <p className="hint">
         RIR =
         あと何回挙げられたか。0は限界、空欄は未入力。範囲（1〜2）・0.5刻みに対応。
@@ -676,14 +662,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
             s.id,
             e.equipmentId,
           );
-        const comparisons = comparison(
-          data.sessions,
-          data.sets,
-          e.exerciseId,
-          e.equipmentId,
-          new Date(s.startedAt),
-          s.id,
-        );
         const form = data.exercises.find((x) => x.id === e.exerciseId);
         const otherMachine = data.exercises.find(
           (x) =>
@@ -708,30 +686,16 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                   {String(i + 1).padStart(2, "0")} / {e.muscle}
                 </span>
                 <h2>{e.name}</h2>
-                <small className="muted">{e.equipmentId || "器具未指定"}</small>
-              </div>
-              <div className="actions compact">
-                <button
-                  disabled={i === 0}
-                  aria-label={`${e.name}を上へ`}
-                  onClick={() => run(() => moveExercise(i, -1))}
-                >
-                  <ArrowUp size={16} />
-                </button>
-                <button
-                  disabled={i === s.exercises.length - 1}
-                  aria-label={`${e.name}を下へ`}
-                  onClick={() => run(() => moveExercise(i, 1))}
-                >
-                  <ArrowDown size={16} />
-                </button>
+                {e.equipmentId && e.equipmentId.trim() !== e.name.trim() && (
+                  <small className="muted">{e.equipmentId}</small>
+                )}
               </div>
             </div>
-            <aside
+            <details
               className="evergreen-notes"
               aria-label={`${e.name}の永続フォームメモ`}
             >
-              <b>フォームメモ</b>
+              <summary>フォームメモ</summary>
               <p>
                 {e.evergreenNotes ??
                   form?.evergreenNotes ??
@@ -742,7 +706,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                   フォーム動画 ↗
                 </a>
               ))}
-            </aside>
+            </details>
 
             {!prev.length && otherHistory.length > 0 && (
               <p className="notice">
@@ -756,54 +720,27 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
                 。現在の機器の負荷へ換算せず、予定の初期値には自動適用しません。
               </p>
             )}
-            <p className="hint">
-              前回実施：
-              {comparisons.previous
-                ? date(sessionDay(comparisons.previous) + "T12:00:00")
-                : "同じ機器の記録なし"}{" "}
-              / 前週同曜日：
-              {comparisons.sameSlot
-                ? date(sessionDay(comparisons.sameSlot) + "T12:00:00")
-                : "記録なし"}
-            </p>
             <SetTable
               database={database}
               rows={rows}
               previous={prev}
               unit={unit}
             />
-            <div className="actions">
-              <button
-                className="full"
-                onClick={() => run(() => addSet(e.exerciseId))}
-              >
+            <div className="exercise-actions">
+              <button onClick={() => run(() => addSet(e.exerciseId))}>
                 <Plus size={18} />
                 セットを追加
               </button>
               <button
-                aria-label={`${e.name}を削除`}
+                aria-label={`${e.name}を今回だけ見送る`}
+                title="マイメニューには残します"
                 onClick={() => {
-                  if (confirm("種目とこのセッション内のセットを削除しますか？"))
-                    run(async () => {
-                      await database.transaction(
-                        "rw",
-                        [database.sessions, database.sets, database.queue],
-                        async () => {
-                          for (const row of rows)
-                            await remove(database, "sets", row);
-                          await save(
-                            database,
-                            "sessions",
-                            revised({
-                              ...s,
-                              exercises: s.exercises.filter(
-                                (x) => x.exerciseId !== e.exerciseId,
-                              ),
-                            }),
-                          );
-                        },
-                      );
-                    });
+                  if (
+                    confirm(
+                      "今回のトレーニングだけ見送ります。マイメニューと種目一覧には残します。",
+                    )
+                  )
+                    run(() => skipExerciseToday(database, s.id, e.exerciseId));
                 }}
               >
                 <Trash2 size={18} />
@@ -1563,7 +1500,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.5.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.6.0 / ローカル版</p>
       </section>
     </>
   );

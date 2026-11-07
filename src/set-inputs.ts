@@ -1,17 +1,22 @@
 import { type AppDB, save, revised } from "./db";
 import { type WorkoutSet, setSchema } from "./model";
 import { z } from "zod";
-export type SetInputs = Pick<
-  WorkoutSet,
-  | "weightKg"
-  | "reps"
-  | "rir"
-  | "rirRaw"
-  | "rirConfidence"
-  | "inputUnit"
-  | "inputWeight"
-> &
-  Partial<Pick<WorkoutSet, "completedAt" | "inputState" | "notes">>;
+export type SetInputs = Partial<
+  Pick<
+    WorkoutSet,
+    | "weightKg"
+    | "reps"
+    | "repsSource"
+    | "rir"
+    | "rirRaw"
+    | "rirConfidence"
+    | "inputUnit"
+    | "inputWeight"
+    | "completedAt"
+    | "inputState"
+    | "notes"
+  >
+>;
 interface Pending {
   id: string;
   token: string;
@@ -23,6 +28,7 @@ const patchSchema = setSchema
   .pick({
     weightKg: true,
     reps: true,
+    repsSource: true,
     rir: true,
     rirRaw: true,
     rirConfidence: true,
@@ -32,7 +38,7 @@ const patchSchema = setSchema
     inputState: true,
     notes: true,
   })
-  .partial({ completedAt: true, inputState: true, notes: true })
+  .partial()
   .strict();
 const pendingSchema = z
   .object({

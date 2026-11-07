@@ -1,3 +1,4 @@
+import { validatedSet } from "./set-values";
 import { type AppDB, meta, save, revised } from "./db";
 import {
   type Entities,
@@ -5,8 +6,33 @@ import {
   kgToDisplay,
   localDate,
 } from "./model";
-import { parseRir, displayToKg, setSchema } from "./model";
+
 import { restorePendingSetInputs } from "./set-inputs";
+import { remove } from "./db";
+export async function skipExerciseToday(
+  db: AppDB,
+  sessionId: string,
+  exerciseId: string,
+) {
+  await db.transaction("rw", [db.sessions, db.sets, db.queue], async () => {
+    const session = await db.sessions.get(sessionId);
+    if (!session || session.deletedAt) throw Error("記録がありません");
+    for (const row of await db.sets
+      .where("sessionId")
+      .equals(sessionId)
+      .filter((r) => r.exerciseId === exerciseId && !r.deletedAt)
+      .toArray())
+      await remove(db, "sets", row);
+    await save(
+      db,
+      "sessions",
+      revised({
+        ...session,
+        exercises: session.exercises.filter((e) => e.exerciseId !== exerciseId),
+      }),
+    );
+  });
+}
 export function targets(
   t: Entities["plans"]["exercises"][number],
   unit: "kg" | "lb" = "kg",
@@ -185,87 +211,53 @@ export async function finishWorkout(db: AppDB, id: string) {
         localStorage.getItem(`takin-sheet-draft-${db.name}-${row.id}`) ??
         localStorage.getItem(`takin-table-draft-${db.name}-${row.id}-${unit}`);
     } catch {
-      /* IndexedDB can still be available without localStorage. */
+      /* IndexedDB remains primary. */
     }
-    if (raw) {
+    if (raw)
       try {
-        const cached = JSON.parse(raw),
-          fields = cached.fields ?? cached;
-        if (
-          typeof fields.reps === "string" &&
-          typeof fields.rir === "string" &&
-          !fields.reps.trim() &&
-          !fields.rir.trim()
-        )
-          continue;
-        if (
-          typeof fields.weight !== "string" ||
-          typeof fields.reps !== "string" ||
-          typeof fields.rir !== "string" ||
-          !fields.weight.trim() ||
-          !fields.reps.trim()
-        )
-          throw Error("未入力");
-        setSchema.parse({
-          ...row,
-          weightKg: displayToKg(Number(fields.weight), unit),
-          reps: Number(fields.reps),
-          rir: parseRir(fields.rir),
-        });
+        const cached = JSON.parse(raw);
+        validatedSet(row, cached.fields ?? cached, cached.unit ?? unit);
       } catch {
         throw Error(
           `セット${row.ordinal + 1}に入力途中または不正な値があります。重量・回数・RIRを確認してください。`,
         );
       }
-    }
   }
   await restorePendingSetInputs(db, new Set(rows.map((r) => r.id)));
   await db.transaction("rw", [db.sessions, db.sets, db.queue], async () => {
     const session = await db.sessions.get(id);
     if (!session || session.deletedAt) throw Error("セッションがありません");
     if (session.status === "finished") return;
-    if (
-      !(await db.sets
-        .where("sessionId")
-        .equals(id)
-        .filter((r) => !r.deletedAt && !!r.completedAt)
-        .count())
-    )
-      throw Error(
-        "入力済みのセットがありません。重量と回数を入力してください。",
-      );
-    const currentRows = await db.sets
+    const current = await db.sets
       .where("sessionId")
       .equals(id)
-      .filter((r) => !r.deletedAt)
+      .filter(
+        (r) =>
+          !r.deletedAt &&
+          session.exercises.some((e) => e.exerciseId === r.exerciseId),
+      )
       .toArray();
-    for (const row of currentRows) {
-      if (row.inputState) {
-        const f = row.inputState;
-        if (!f.reps && !f.rir) continue;
-        try {
-          if (!f.weight.trim() || !/^\d+$/.test(f.reps)) throw Error("未入力");
-          setSchema.parse({
-            ...row,
-            weightKg: displayToKg(Number(f.weight), row.inputUnit ?? unit),
-            reps: Number(f.reps),
-            rir: parseRir(f.rir),
-          });
-        } catch {
-          throw Error(
-            `セット${row.ordinal + 1}に入力途中または不正な値があります。入力を確認してください`,
-          );
-        }
+    if (!current.length) throw Error("保存するセットがありません");
+    const stamp = new Date().toISOString();
+    for (const row of current) {
+      try {
+        const valid = validatedSet(row);
+        if (row.completedAt) continue;
+        await save(
+          db,
+          "sets",
+          revised({ ...valid, completedAt: row.completedAt ?? stamp }),
+        );
+      } catch {
+        throw Error(
+          `セット${row.ordinal + 1}に入力途中または不正な値があります。入力を確認してください`,
+        );
       }
     }
     await save(
       db,
       "sessions",
-      revised({
-        ...session,
-        status: "finished",
-        endedAt: new Date().toISOString(),
-      }),
+      revised({ ...session, status: "finished", endedAt: stamp }),
     );
   });
 }

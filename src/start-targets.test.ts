@@ -1,6 +1,10 @@
 import { it, expect, afterEach } from "vitest";
 import { AppDB, seed, save, revised } from "./db";
-import { prepareWorkout, ConditionRequired } from "./start-targets";
+import {
+  prepareWorkout,
+  ConditionRequired,
+  refreshTargets,
+} from "./start-targets";
 import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { startWorkout, finishWorkout } from "./training";
 import { generateRecommendations } from "./recommendations";
@@ -141,4 +145,28 @@ it("deduplicates simultaneous starts", async () => {
   expect(ids[0]).toBe(ids[1]);
   expect(await db.sessions.count()).toBe(1);
   expect(await db.recommendations.count()).toBe(5);
+});
+it("automatically applies refreshed safe targets and never changes already recorded sets", async () => {
+  const { db, a } = await setup();
+  await ready(db, a);
+  const id = await prepareWorkout(db, a, "lb"),
+    row = (await db.sets.where("sessionId").equals(id).toArray())[0];
+  await save(
+    db,
+    "sets",
+    revised({
+      ...row,
+      completedAt: new Date().toISOString(),
+      reps: 7,
+      rir: { min: 0, max: 0 },
+    }),
+  );
+  const before = await db.sets.get(row.id),
+    count = await db.recommendations.count();
+  expect(await refreshTargets(db, id)).toBeGreaterThan(0);
+  expect(await db.sets.get(row.id)).toEqual(before);
+  const latest = (await db.recommendations.toArray()).slice();
+  expect(latest.filter((r) => r.status === "accepted").length).toBeGreaterThan(
+    count,
+  );
 });
