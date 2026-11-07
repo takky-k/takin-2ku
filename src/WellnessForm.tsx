@@ -103,14 +103,15 @@ export function WellnessForm({
   plans?: Entities["plans"][];
   exercises?: Entities["exercises"][];
   requestedPlanId?: string;
-  onSaved?: () => void;
+  onSaved?: (saved: Entities["wellness"]) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState(
       () => existing ?? emptyWellness(sessionId, date),
     ),
     [saving, setSaving] = useState(false),
     [message, setMessage] = useState("");
-  const dirty = useRef(false);
+  const dirty = useRef(false),
+    committing = useRef(false);
   const sleep = useSleepState();
   useEffect(() => {
     if (existing && !dirty.current) setDraft(existing);
@@ -134,6 +135,8 @@ export function WellnessForm({
     muscles = selectedPlan ? plannedMuscles(selectedPlan, exercises) : [];
   const hours = sleepHoursForDate(health, date);
   async function commit() {
+    if (committing.current) return;
+    committing.current = true;
     setSaving(true);
     try {
       const saved = await saveWellness(database, {
@@ -145,10 +148,17 @@ export function WellnessForm({
       setDraft(saved);
       dirty.current = false;
       setMessage("保存しました");
-      onSaved?.();
+      try {
+        await onSaved?.(saved);
+      } catch (e) {
+        setMessage(
+          `コンディションは保存済みです。記録を開始できません：${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     } catch (e) {
       setMessage(`保存できませんでした：${String(e)}`);
     } finally {
+      committing.current = false;
       setSaving(false);
     }
   }

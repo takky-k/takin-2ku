@@ -19,7 +19,7 @@ async function saveCondition(page: Page, key: string) {
     .all())
     await slider.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
 }
 test("record tab always opens menu picker and preserves both drafts while requiring the right condition", async ({
   page,
@@ -38,10 +38,6 @@ test("record tab always opens menu picker and preserves both drafts while requir
     page.getByRole("slider", { name: "背中の筋肉疲労", exact: true }),
   ).toBeVisible();
   await saveCondition(page, "A");
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await card(page, "A")
-    .getByRole("button", { name: "開始する", exact: true })
-    .click();
   await expect(page).toHaveURL(/#\/workout\/current$/);
   await expect(
     page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
@@ -68,10 +64,6 @@ test("record tab always opens menu picker and preserves both drafts while requir
     page.getByRole("slider", { name: "背中の筋肉疲労", exact: true }),
   ).toHaveCount(0);
   await saveCondition(page, "B");
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await card(page, "B")
-    .getByRole("button", { name: "開始する", exact: true })
-    .click();
   await expect(
     page
       .locator(".exercise-card")
@@ -83,10 +75,6 @@ test("record tab always opens menu picker and preserves both drafts while requir
     .getByRole("button", { name: "続きから記録", exact: true })
     .click();
   await saveCondition(page, "A");
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await card(page, "A")
-    .getByRole("button", { name: "続きから記録", exact: true })
-    .click();
   await expect(a.getByLabel("セット1の重量", { exact: true })).toHaveValue(
     "82",
   );
@@ -113,4 +101,46 @@ test("record tab always opens menu picker and preserves both drafts while requir
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("saving incomplete condition stays on today and a valid saved B starts directly offline", async ({
+  page,
+  context,
+}) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText(
+    "コンディションは保存済みです",
+  );
+  await expect(
+    page.getByRole("heading", { name: "今日のコンディション", level: 2 }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "今日のメニュー", exact: true })
+    .selectOption({ label: "B｜胸・肩・三頭筋" });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText("筋肉疲労");
+  for (const slider of await page
+    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .all())
+    await slider.press("Home");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
+  await expect(page.locator(".session-heading")).toContainText(
+    "B｜胸・肩・三頭筋",
+  );
+  await expect(
+    page
+      .locator(".exercise-card")
+      .first()
+      .getByRole("heading", { name: "新チェストプレスマシン", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "今日", exact: true }).click();
+  await expect(
+    page.getByRole("slider", { name: "胸の筋肉疲労", exact: true }),
+  ).toHaveValue("1");
 });

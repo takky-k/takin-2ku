@@ -28,7 +28,7 @@ test("private import counts once in analysis, and start targets use history and 
     .all())
     await slider.press("End");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
   const names = [
     "新チェストプレスマシン",
     "インクラインチェストプレスマシン",
@@ -100,13 +100,9 @@ test("private import counts once in analysis, and start targets use history and 
   await expect(
     page.getByRole("heading", { name: "今日のメニューを選ぶ", exact: true }),
   ).toHaveCount(0);
-  const b = page.locator(".menu-card").filter({
-    has: page.getByRole("heading", {
-      name: "B｜胸・肩・三頭筋",
-      exact: true,
-    }),
-  });
-  await b.getByRole("button", { name: "開始する", exact: true }).click();
+  await page.getByRole("link", { name: "今日", exact: true }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
   await expect(
     page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
   ).toHaveCount(0);

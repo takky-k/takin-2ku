@@ -130,3 +130,36 @@ it("serializes two initial saves into one daily check-in", async () => {
   expect(await db.wellness.count()).toBe(1);
   expect((await db.wellness.toArray())[0].mood).toBe(4);
 });
+it("awaits the saved callback, prevents duplicate saves and reports start failure without losing saved input", async () => {
+  const db = fresh();
+  await seed(db);
+  let finish!: () => void,
+    calls = 0;
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  render(
+    <WellnessForm
+      database={db}
+      unit="lb"
+      health={[]}
+      onSaved={async (saved) => {
+        calls++;
+        expect(await db.wellness.get(saved.id)).toBeDefined();
+        await gate;
+        throw Error("目標を準備できません");
+      }}
+    />,
+  );
+  const mood = screen.getByRole("slider", { name: "気分" });
+  fireEvent.change(mood, { target: { value: "4" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(calls).toBe(1));
+  expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "保存中…" }));
+  expect(calls).toBe(1);
+  finish();
+  await screen.findByText(/コンディションは保存済みです.*目標を準備できません/);
+  expect(await db.wellness.count()).toBe(1);
+  expect(mood).toHaveValue("4");
+});

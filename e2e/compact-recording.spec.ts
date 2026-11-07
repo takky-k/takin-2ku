@@ -7,13 +7,7 @@ async function start(page: Page) {
   for (const s of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
     await s.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await page
-    .locator(".menu-card")
-    .first()
-    .getByRole("button", { name: "開始する", exact: true })
-    .click();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
   await expect(page.locator(".exercise-card").first()).toBeVisible();
 }
 async function finish(page: Page) {

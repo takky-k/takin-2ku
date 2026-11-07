@@ -20,14 +20,10 @@ async function condition(page: Page, key = "A") {
     .all())
     await slider.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
 }
 async function startA(page: Page) {
   await condition(page);
-  await page.getByRole("link", { name: "記録", exact: true }).click();
-  await planA(page)
-    .getByRole("button", { name: "開始する", exact: true })
-    .click();
   await expect(
     page.getByLabel("セット1の重量", { exact: true }).first(),
   ).toBeVisible();
@@ -205,14 +201,17 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
     fatigue = page.getByRole("slider", { name: "背中の筋肉疲労", exact: true });
   await expect(mood).toHaveAttribute("aria-valuetext", "未入力");
   await mood.press("End");
-  await fatigue.press("Home");
+  for (const r of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
+    await r.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
+  await page.getByRole("link", { name: "今日", exact: true }).click();
   await expect(mood).toHaveValue("5");
   await expect(fatigue).toHaveValue("1");
   await fatigue.press("End");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/#\/workout\/current$/);
+  await page.getByRole("link", { name: "今日", exact: true }).click();
   await page.reload();
   await expect(mood).toHaveValue("5");
   await expect(fatigue).toHaveValue("5");

@@ -4,6 +4,7 @@ import {
   prepareWorkout,
   ConditionRequired,
   refreshTargets,
+  startFromSavedCondition,
 } from "./start-targets";
 import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { startWorkout, finishWorkout } from "./training";
@@ -169,4 +170,96 @@ it("automatically applies refreshed safe targets and never changes already recor
   expect(latest.filter((r) => r.status === "accepted").length).toBeGreaterThan(
     count,
   );
+});
+it("starts the saved menu directly, refreshes untouched targets and keeps edited drafts", async () => {
+  const { db, b } = await setup();
+  await ready(db, b);
+  const saved = (await db.wellness.toArray())[0];
+  const id = await startFromSavedCondition(db, saved);
+  expect((await db.sessions.get(id))?.planId).toBe(b.id);
+  const rows = await db.sets.where("sessionId").equals(id).sortBy("ordinal");
+  const row = rows[0];
+  await save(
+    db,
+    "sets",
+    revised({
+      ...row,
+      inputState: {
+        ...row.inputState!,
+        weight: "82",
+        weightTouched: true,
+        rir: "1~",
+      },
+      rirRaw: "1~",
+      notes: "途中の記録",
+    }),
+  );
+  const before = await db.sets.get(row.id),
+    count = await db.recommendations.count();
+  expect(await startFromSavedCondition(db, saved)).toBe(id);
+  expect(await db.sets.get(row.id)).toEqual(before);
+  expect(await db.sessions.count()).toBe(1);
+  expect(await db.recommendations.count()).toBeGreaterThan(count);
+});
+it("does not start a session without a selected menu or complete saved condition", async () => {
+  const { db, a } = await setup();
+  const saved = await saveWellness(db, emptyWellness(null));
+  await expect(startFromSavedCondition(db, saved)).rejects.toThrow("メニュー");
+  const partial = await saveWellness(db, {
+    ...saved,
+    plannedPlanId: a.id,
+    fatigueByMuscle: { 背中: 1 },
+  });
+  await expect(startFromSavedCondition(db, partial)).rejects.toBeInstanceOf(
+    ConditionRequired,
+  );
+  expect(await db.sessions.count()).toBe(0);
+  expect((await db.wellness.get(partial.id))?.plannedPlanId).toBe(a.id);
+});
+it("keeps each untouched set matched to its original previous ordinal after earlier sets have been entered", async () => {
+  const { db, a } = await setup(),
+    old = await startWorkout(db, a, "lb");
+  const oldRows = await db.sets.where("sessionId").equals(old).toArray();
+  for (const r of oldRows)
+    await save(
+      db,
+      "sets",
+      revised({
+        ...r,
+        weightKg: 40 + r.ordinal * 10,
+        reps: 8,
+        rir: null,
+        completedAt: new Date().toISOString(),
+      }),
+    );
+  await finishWorkout(db, old);
+  await ready(db, a);
+  const saved = (await db.wellness.toArray())[0],
+    id = await startFromSavedCondition(db, saved);
+  const exerciseId = a.exercises[0].exerciseId;
+  let rows = (await db.sets.where("sessionId").equals(id).toArray())
+    .filter((r) => r.exerciseId === exerciseId)
+    .sort((a, b) => a.ordinal - b.ordinal);
+  expect(rows[1].weightKg).toBe(50);
+  const r = rows[0];
+  await save(
+    db,
+    "sets",
+    revised({
+      ...r,
+      inputState: {
+        ...r.inputState!,
+        weight: "82",
+        weightTouched: true,
+        rir: "1~",
+      },
+      rirRaw: "1~",
+    }),
+  );
+  await startFromSavedCondition(db, saved);
+  rows = (await db.sets.where("sessionId").equals(id).toArray())
+    .filter((r) => r.exerciseId === exerciseId)
+    .sort((a, b) => a.ordinal - b.ordinal);
+  expect(rows[0].inputState?.weight).toBe("82");
+  expect(rows[1].weightKg).toBe(50);
 });
