@@ -92,7 +92,7 @@ test("private import counts once in analysis, and start targets use history and 
   await page.getByRole("link", { name: "記録", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "マイメニュー", exact: true }),
-  ).toBeVisible();
+  ).toBeInViewport();
   await expect(
     page.getByRole("heading", { name: "今日のメニューを選ぶ", exact: true }),
   ).toHaveCount(0);

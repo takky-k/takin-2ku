@@ -461,15 +461,6 @@ function Workout() {
   return (
     <>
       <Title eyebrow="TRAINING" title="トレーニング" />
-      {!s && latestFinished && (
-        <section className="card">
-          <h2>トレーニング後の体重</h2>
-          <p className="hint">
-            {sessionDay(latestFinished)} · {latestFinished.name}
-          </p>
-          <WellnessEditor sessionId={latestFinished.id} />
-        </section>
-      )}
       {s?.requiresTargetReview ? (
         <StartReview database={database} sessionId={s.id} />
       ) : s ? (
@@ -523,6 +514,19 @@ function Workout() {
         </>
       ) : (
         <MyMenus />
+      )}
+      {!s && latestFinished && (
+        <details
+          className="card post-workout-weight"
+          open={sessionDay(latestFinished) === localDate()}
+        >
+          <summary>トレーニング後の体重を記録</summary>
+          <h2>トレーニング後の体重</h2>
+          <p className="hint">
+            {sessionDay(latestFinished)} · {latestFinished.name}
+          </p>
+          <WellnessEditor sessionId={latestFinished.id} />
+        </details>
       )}
     </>
   );
