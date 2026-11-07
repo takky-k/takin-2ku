@@ -39,7 +39,18 @@ export async function startWorkout(
         .equals("active")
         .filter((s) => !s.deletedAt)
         .first();
-      if (active) return active.id;
+      if (active?.planId === plan.id) return active.id;
+      if (active)
+        await save(db, "sessions", revised({ ...active, status: "paused" }));
+      const paused = await db.sessions
+        .where("status")
+        .equals("paused")
+        .filter((s) => !s.deletedAt && s.planId === plan.id)
+        .first();
+      if (paused) {
+        await save(db, "sessions", revised({ ...paused, status: "active" }));
+        return paused.id;
+      }
       const exercises = await db.exercises.toArray();
       const session: Entities["sessions"] = {
         ...meta(),

@@ -69,7 +69,7 @@ import { cleanAccidentalACopies, restoreMenuCopies } from "./menu-cleanup";
 import { SleepImport } from "./health";
 import { restorePendingSetInputs } from "./set-inputs";
 import { useAppRefresh } from "./app-lifecycle";
-import { StartReview, prepareWorkout } from "./StartReview";
+import { ConditionRequired, prepareWorkout } from "./start-targets";
 import { WorkoutImportPanel } from "./workout-import";
 import { exportTrainingCsv } from "./training-export";
 import { SleepConnectionSettings } from "./SleepConnection";
@@ -228,15 +228,16 @@ export function App() {
           </div>
         )}
         {route.pathname !== "/" &&
-          route.pathname !== "/workout" &&
+          !route.pathname.startsWith("/workout") &&
           data?.sessions.some((s) => s.status === "active") && (
-            <Link className="resume-strip" to="/workout">
+            <Link className="resume-strip" to="/workout/current">
               進行中のトレーニングに戻る →
             </Link>
           )}
         <Routes key={database.name}>
           <Route path="/" element={<Today key={appDate} />} />
           <Route path="/workout" element={<Workout />} />
+          <Route path="/workout/current" element={<Workout />} />
           <Route path="/plans/new" element={<PlanEditRoute />} />
           <Route path="/plans/:planId/edit" element={<PlanEditRoute />} />
           <Route path="/history" element={<History />} />
@@ -255,7 +256,11 @@ export function App() {
         ].map(([Icon, path, label]) => {
           const I = Icon as typeof House;
           return (
-            <NavLink key={String(path)} end to={String(path)}>
+            <NavLink
+              key={String(path)}
+              end={path !== "/workout"}
+              to={String(path)}
+            >
               <I size={22} />
               <span>{String(label)}</span>
             </NavLink>
@@ -305,7 +310,7 @@ function Today() {
 function MyMenus() {
   const { database, data } = useData();
   if (!data?.profile) return <p>メニューを準備中…</p>;
-  const active = data.sessions.find((s) => s.status === "active");
+
   return (
     <>
       {" "}
@@ -336,16 +341,31 @@ function MyMenus() {
           <div className="actions">
             <button
               className="primary"
-              disabled={!!active || !p.exercises.length}
+              disabled={!p.exercises.length}
               onClick={() =>
                 run(async () => {
-                  await prepareWorkout(database, p, data.profile!.units);
-                  window.location.hash = "/workout";
+                  try {
+                    await prepareWorkout(database, p, data.profile!.units);
+                    useUI.getState().setError("");
+                    window.location.hash = "/workout/current";
+                  } catch (e) {
+                    if (e instanceof ConditionRequired) {
+                      useUI.getState().setError(e.message);
+                      window.location.hash =
+                        "/?plan=" + encodeURIComponent(p.id);
+                      return;
+                    }
+                    throw e;
+                  }
                 })
               }
             >
               <Play size={17} />
-              開始する
+              {data.sessions.some(
+                (s) => s.planId === p.id && s.status !== "finished",
+              )
+                ? "続きから記録"
+                : "開始する"}
             </button>
             <Link
               className="button"
@@ -450,6 +470,7 @@ function previousSets(
 function Workout() {
   const { data, database } = useData();
   const [finishing, setFinishing] = useState(false);
+  const picker = useLocation().pathname === "/workout";
   const s = data?.sessions.find((s) => s.status === "active");
   const latestFinished = data?.sessions
     .filter((s) => s.status === "finished")
@@ -461,8 +482,17 @@ function Workout() {
   return (
     <>
       <Title eyebrow="TRAINING" title="トレーニング" />
-      {s?.requiresTargetReview ? (
-        <StartReview database={database} sessionId={s.id} />
+      {picker ? (
+        <MyMenus />
+      ) : s?.requiresTargetReview ? (
+        <section className="card">
+          <p>
+            開始の準備が完了していません。コンディションを保存してメニューを選び直してください。
+          </p>
+          <Link className="button" to="/workout">
+            メニュー選択へ戻る
+          </Link>
+        </section>
       ) : s ? (
         <>
           <SessionEditor session={s} />
@@ -515,7 +545,7 @@ function Workout() {
       ) : (
         <MyMenus />
       )}
-      {!s && latestFinished && (
+      {!picker && !s && latestFinished && (
         <details
           className="card post-workout-weight"
           open={sessionDay(latestFinished) === localDate()}
@@ -898,6 +928,8 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
 
 function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
   const { data, database } = useData();
+  const requestedPlanId =
+    new URLSearchParams(useLocation().search).get("plan") ?? undefined;
   if (!data?.profile) return null;
   const existing = data.wellness
     .filter((w) =>
@@ -923,6 +955,10 @@ function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
           : localDate())
       }
       bodyOnly={sessionId !== null}
+      plans={data.plans}
+      exercises={data.exercises}
+      requestedPlanId={requestedPlanId}
+      onSaved={() => useUI.getState().setError("")}
     />
   );
 }
@@ -1009,7 +1045,7 @@ function History() {
                 </small>
               </span>
               <span className="tag">
-                {s.status === "active" ? "途中" : "完了"} →
+                {s.status === "finished" ? "完了" : "途中"} →
               </span>
             </button>
           ))
@@ -1527,7 +1563,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.4.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.5.0 / ローカル版</p>
       </section>
     </>
   );

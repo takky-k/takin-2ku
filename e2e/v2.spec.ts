@@ -6,21 +6,34 @@ const planA = (page: Page) =>
       exact: true,
     }),
   });
-async function startA(page: Page, approve = true) {
+async function condition(page: Page, key = "A") {
+  await page.getByRole("link", { name: "今日", exact: true }).click();
+  const select = page.getByRole("combobox", {
+    name: "今日のメニュー",
+    exact: true,
+  });
+  await select.selectOption({
+    label: key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
+  });
+  for (const slider of await page
+    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .all())
+    await slider.press("Home");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+}
+async function startA(page: Page) {
+  await condition(page);
   await page.getByRole("link", { name: "記録", exact: true }).click();
   await planA(page)
     .getByRole("button", { name: "開始する", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "トレーニング", exact: true }),
+    page.getByLabel("セット1の重量", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
-  ).toBeVisible();
-  if (approve)
-    await page
-      .getByRole("button", { name: "この目標で開始", exact: true })
-      .click();
+  ).toHaveCount(0);
 }
 async function finish(page: Page) {
   await page
@@ -185,8 +198,11 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
     page.getByText("痛み・体調不良がある", { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByLabel(/体重/)).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "今日のメニュー", exact: true })
+    .selectOption({ label: "A｜背中・リアデルト・二頭筋" });
   const mood = page.getByRole("slider", { name: "気分", exact: true }),
-    fatigue = page.getByRole("slider", { name: "全身の筋肉疲労", exact: true });
+    fatigue = page.getByRole("slider", { name: "背中の筋肉疲労", exact: true });
   await expect(mood).toHaveAttribute("aria-valuetext", "未入力");
   await mood.press("End");
   await fatigue.press("Home");
@@ -236,12 +252,9 @@ test("approval changes only this session, template and actual RIR stay intact", 
   const editUrl = await planA(page)
     .getByRole("link", { name: /を編集/ })
     .getAttribute("href");
-  await startA(page, false);
-  await expect(page.getByRole("table")).toHaveCount(0);
-  await expect(page.locator(".target-review").first()).toContainText("9回");
-  await page
-    .getByRole("button", { name: "この目標で開始", exact: true })
-    .click();
+  await startA(page);
+  await expect(page.getByRole("table")).toHaveCount(5);
+  await expect(page.getByRole('heading',{name:'今日の目標を確認',exact:true})).toHaveCount(0);
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
     "",
   );

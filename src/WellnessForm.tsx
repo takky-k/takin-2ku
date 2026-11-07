@@ -7,7 +7,7 @@ import {
   round,
   localDate,
 } from "./model";
-import { emptyWellness, saveWellness } from "./wellness";
+import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
 import { sleepLabel, useSleepState } from "./sleep-sync";
 function Scale({
@@ -88,6 +88,10 @@ export function WellnessForm({
   health,
   date = localDate(),
   bodyOnly = false,
+  plans = [],
+  exercises = [],
+  requestedPlanId,
+  onSaved,
 }: {
   database: AppDB;
   existing?: Entities["wellness"];
@@ -96,6 +100,10 @@ export function WellnessForm({
   health: Entities["health"][];
   date?: string;
   bodyOnly?: boolean;
+  plans?: Entities["plans"][];
+  exercises?: Entities["exercises"][];
+  requestedPlanId?: string;
+  onSaved?: () => void;
 }) {
   const [draft, setDraft] = useState(
       () => existing ?? emptyWellness(sessionId, date),
@@ -112,18 +120,32 @@ export function WellnessForm({
     setDraft((v) => ({ ...v, ...patch }));
     setMessage("");
   };
+  useEffect(() => {
+    if (
+      !bodyOnly &&
+      requestedPlanId &&
+      plans.some((p) => p.id === requestedPlanId)
+    ) {
+      setDraft((d) => ({ ...d, plannedPlanId: requestedPlanId }));
+      dirty.current = true;
+    }
+  }, [requestedPlanId, !!plans.length]);
+  const selectedPlan = plans.find((p) => p.id === draft.plannedPlanId),
+    muscles = selectedPlan ? plannedMuscles(selectedPlan, exercises) : [];
   const hours = sleepHoursForDate(health, date);
   async function commit() {
     setSaving(true);
     try {
       const saved = await saveWellness(database, {
         ...draft,
+        ...(!bodyOnly ? { fatigueByMuscle: draft.fatigueByMuscle ?? {} } : {}),
         sleepHours: hours ?? draft.sleepHours,
         sleepStatus: hours === null ? "not-acquired" : "available",
       });
       setDraft(saved);
       dirty.current = false;
       setMessage("保存しました");
+      onSaved?.();
     } catch (e) {
       setMessage(`保存できませんでした：${String(e)}`);
     } finally {
@@ -134,6 +156,22 @@ export function WellnessForm({
     <div className="wellness-form">
       {!bodyOnly && (
         <>
+          <label>
+            今日のメニュー
+            <select
+              value={draft.plannedPlanId ?? ""}
+              onChange={(e) =>
+                change({ plannedPlanId: e.target.value || null })
+              }
+            >
+              <option value="">A/Bなどのメニューを選択</option>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <Scale
             label="気分"
             value={draft.mood}
@@ -141,27 +179,24 @@ export function WellnessForm({
             high="とても良い"
             onChange={(mood) => change({ mood })}
           />
-          <Scale
-            label="全身の筋肉疲労"
-            value={draft.fatigue}
-            low="疲れていない"
-            high="最も疲れている"
-            onChange={(fatigue) => change({ fatigue })}
-          />
+          {!selectedPlan && (
+            <p className="hint">
+              メニューを選ぶと、今日鍛える部位の筋肉疲労だけ表示します。
+            </p>
+          )}
           <div className="soreness-scales">
-            {["胸", "背中", "肩", "腕"].map((m) => (
+            {muscles.map((m) => (
               <Scale
                 key={m}
-                label={`${m}の筋肉痛`}
-                min={0}
-                value={draft.sorenessByMuscle[m] ?? null}
-                low="筋肉痛なし"
-                high="最も強い筋肉痛"
+                label={m + "の筋肉疲労"}
+                value={draft.fatigueByMuscle?.[m] ?? null}
+                low="疲れていない"
+                high="最も疲れている"
                 onChange={(n) => {
-                  const soreness = { ...draft.sorenessByMuscle };
-                  if (n === null) delete soreness[m];
-                  else soreness[m] = n;
-                  change({ sorenessByMuscle: soreness });
+                  const values = { ...draft.fatigueByMuscle };
+                  if (n === null) delete values[m];
+                  else values[m] = n;
+                  change({ fatigueByMuscle: values });
                 }}
               />
             ))}

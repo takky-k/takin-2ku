@@ -6,7 +6,7 @@ import {
   waitFor,
   cleanup,
 } from "@testing-library/react";
-import { AppDB } from "./db";
+import { AppDB, seed } from "./db";
 import { WellnessForm } from "./WellnessForm";
 import { emptyWellness, saveWellness } from "./wellness";
 const opened: AppDB[] = [];
@@ -21,9 +21,23 @@ afterEach(async () => {
 });
 it("keeps untouched sliders null and upserts on explicit save without clearing the form", async () => {
   const db = fresh();
-  render(<WellnessForm database={db} unit="lb" health={[]} />);
+  await seed(db);
+  const plans = await db.plans.toArray(),
+    exercises = await db.exercises.toArray();
+  render(
+    <WellnessForm
+      database={db}
+      unit="lb"
+      health={[]}
+      plans={plans}
+      exercises={exercises}
+    />,
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "今日のメニュー" }), {
+    target: { value: plans.find((p) => p.catalogKey === "A")!.id },
+  });
   const mood = screen.getByRole("slider", { name: "気分" }),
-    fatigue = screen.getByRole("slider", { name: "全身の筋肉疲労" });
+    fatigue = screen.getByRole("slider", { name: "背中の筋肉疲労" });
   expect(mood).toHaveAttribute("aria-valuetext", "未入力");
   fireEvent.change(mood, { target: { value: "5" } });
   expect(await db.wellness.count()).toBe(0);
@@ -37,11 +51,57 @@ it("keeps untouched sliders null and upserts on explicit save without clearing t
   fireEvent.change(fatigue, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(async () =>
-    expect((await db.wellness.get(first.id))?.fatigue).toBe(1),
+    expect((await db.wellness.get(first.id))?.fatigueByMuscle?.["背中"]).toBe(
+      1,
+    ),
   );
   expect(await db.wellness.count()).toBe(1);
   expect(mood).toHaveValue("5");
   expect(fatigue).toHaveValue("1");
+});
+it("asks only selected-plan muscles and retains values when switching between A and B", async () => {
+  const db = fresh();
+  await seed(db);
+  const plans = await db.plans.toArray(),
+    exercises = await db.exercises.toArray();
+  render(
+    <WellnessForm
+      database={db}
+      unit="lb"
+      health={[]}
+      plans={plans}
+      exercises={exercises}
+    />,
+  );
+  expect(
+    screen.queryByRole("slider", { name: "全身の筋肉疲労" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("slider", { name: "胸の筋肉疲労" }),
+  ).not.toBeInTheDocument();
+  const select = screen.getByRole("combobox", { name: "今日のメニュー" });
+  fireEvent.change(select, {
+    target: { value: plans.find((p) => p.catalogKey === "A")!.id },
+  });
+  fireEvent.change(screen.getByRole("slider", { name: "背中の筋肉疲労" }), {
+    target: { value: "5" },
+  });
+  fireEvent.change(select, {
+    target: { value: plans.find((p) => p.catalogKey === "B")!.id },
+  });
+  expect(
+    screen.queryByRole("slider", { name: "背中の筋肉疲労" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "胸の筋肉疲労" })).toHaveAttribute(
+    "aria-valuetext",
+    "未入力",
+  );
+  fireEvent.change(select, {
+    target: { value: plans.find((p) => p.catalogKey === "A")!.id },
+  });
+  expect(screen.getByRole("slider", { name: "背中の筋肉疲労" })).toHaveValue(
+    "5",
+  );
 });
 it("marks an explicitly selected neutral value and retains input after storage failure", async () => {
   const db = fresh();
