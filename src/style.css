@@ -1021,7 +1021,7 @@ input[type="number"]::-webkit-outer-spin-button {
   width: 10%;
 }
 .compact-sheet .delete-column {
-  width: 10%;
+  width: 50px;
 }
 .compact-sheet th {
   font-size: 11px;
@@ -1044,7 +1044,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .compact-sheet .delete-last {
   border: 0;
   background: transparent;
-  min-width: 32px;
+  min-width: 44px;
   min-height: 44px;
   width: 100%;
   padding: 0;
