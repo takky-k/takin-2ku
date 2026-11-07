@@ -82,7 +82,7 @@ test("private import counts once in analysis, and start targets use history and 
     page
       .getByRole("combobox", { name: "種目・器具", exact: true })
       .locator("option:checked"),
-  ).toContainText("新チェストプレスマシン");
+  ).toContainText("全種目（総合）");
   await expect(
     page.getByText("グラフを表示する記録がありません。", { exact: true }),
   ).toHaveCount(0);

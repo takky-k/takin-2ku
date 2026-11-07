@@ -54,6 +54,8 @@ import {
   localDate,
 } from "./model";
 import { epley, weeklySummary } from "./analysis";
+import { overallProgress } from "./progress";
+import { BodyGoal } from "./BodyGoal";
 import { useUI } from "./store";
 import "./style.css";
 import { PlanEditor } from "./PlanEditor";
@@ -626,9 +628,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
     <>
       <section className="session-heading">
         <h2>{s.name}</h2>
-        <span className="tag">
-          {s.status === "active" ? "記録中 · 自動保存" : "保存済み"}
-        </span>
       </section>
       <details className="card session-memo">
         <summary>今日のトレーニングメモ</summary>
@@ -996,35 +995,21 @@ function History() {
   );
 }
 function Analysis() {
-  const { data } = useData(),
+  const { data, database } = useData(),
     [exercise, setExercise] = useState(""),
     [days, setDays] = useState(28),
     [metric, setMetric] = useState("e1rm");
   if (!data?.profile) return null;
   const unit = data.profile.units,
-    latest = data.sessions
-      .filter(
-        (s) =>
-          s.status === "finished" &&
-          data.sets.some((r) => r.sessionId === s.id && r.completedAt),
-      )
-      .sort(
-        (a, b) =>
-          sessionDay(b).localeCompare(sessionDay(a)) ||
-          b.startedAt.localeCompare(a.startedAt),
-      )[0],
-    selected =
-      exercise ||
-      latest?.exercises.find((e) =>
-        data.sets.some(
-          (r) =>
-            r.sessionId === latest.id &&
-            r.exerciseId === e.exerciseId &&
-            r.completedAt,
-        ),
-      )?.exerciseId ||
-      data.exercises[0]?.id,
+    selected = exercise,
     weekly = weeklySummary(data.sessions, data.sets);
+  const overall = overallProgress(data.sessions, data.sets)
+    .filter(
+      (p) =>
+        days === 0 ||
+        Date.now() - Date.parse(p.day + "T12:00:00") <= days * 86400000,
+    )
+    .map((p) => ({ ...p, name: date(p.day + "T12:00:00") }));
   const points = data.sessions
     .filter(
       (s) =>
@@ -1066,13 +1051,14 @@ function Analysis() {
         target={data.profile.targetDaysPerWeek}
       />
       <section className="card">
-        <h2>種目の推移</h2>
+        <h2>{selected ? "種目の推移" : "全種目の総合推移"}</h2>
         <label>
           種目・器具
           <select
             value={selected ?? ""}
             onChange={(e) => setExercise(e.target.value)}
           >
+            <option value="">全種目（総合）</option>
             {data.exercises.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name} / {e.equipmentId}
@@ -1093,16 +1079,70 @@ function Analysis() {
               <option value="0">全期間</option>
             </select>
           </label>
-          <label>
-            指標
-            <select value={metric} onChange={(e) => setMetric(e.target.value)}>
-              <option value="e1rm">推定1RM ({unit})</option>
-              <option value="weight">最高重量 ({unit})</option>
-              <option value="reps">最多回数</option>
-            </select>
-          </label>
+          {selected && (
+            <label>
+              指標
+              <select
+                value={metric}
+                onChange={(e) => setMetric(e.target.value)}
+              >
+                <option value="e1rm">推定1RM ({unit})</option>
+                <option value="weight">最高重量 ({unit})</option>
+                <option value="reps">最多回数</option>
+              </select>
+            </label>
+          )}
         </div>
-        {points.length ? (
+        {!selected ? (
+          overall.length ? (
+            <>
+              <div className="progress-value">
+                <strong>{overall.at(-1)!.score}</strong>
+                <span>初回を100とした総合指数</span>
+              </div>
+              <div
+                className="chart"
+                role="img"
+                aria-label="全種目の総合推移グラフ"
+              >
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={overall}>
+                    <CartesianGrid stroke="#323843" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis
+                      width={42}
+                      domain={["auto", "auto"]}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: "#20252e", color: "#eee" }}
+                    />
+                    <Line
+                      dataKey="score"
+                      isAnimationActive={false}
+                      name="総合指数"
+                      stroke="var(--accent)"
+                      strokeWidth={3}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="hint">
+                {overall.at(-1)!.exercises}種目・器具の記録（うち2回以上の実績{" "}
+                {overall.at(-1)!.compared}）。同日内は最後の集計値。
+              </p>
+              {!overall.at(-1)!.compared && (
+                <p className="muted">
+                  比較できる実績が不足しています。現在は基準値です。
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="muted">
+              トレーニングを記録すると総合推移を表示します。
+            </p>
+          )
+        ) : points.length ? (
           <div className="chart" role="img" aria-label="種目の進捗グラフ">
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={points}>
@@ -1132,32 +1172,23 @@ function Analysis() {
           <p className="muted">グラフを表示する記録がありません。</p>
         )}
         <p className="hint">
-          推定1RMはEpley式の参考値（1〜12回のみ）。異なるマシン間の比較には使いません。
+          {selected
+            ? "推定1RMはEpley式の参考値（1〜12回のみ）。異なるマシン間の比較には使いません。"
+            : "同じ種目・器具ごとの推定1RMを初回=100に換算し、直近の値を等しい比重で平均します。休んだ種目は直近値を維持。対象種目の増減でも指数は変わります。筋肉量や体型の到達率ではありません。補助付き・自重種目、ウォームアップ、13回以上は集計しません。"}
         </p>
       </section>
-      <section className="card">
-        <h2>今週の筋群別セット</h2>
-        <p className="hint">
-          完了した通常・ドロップ・失敗セットを集計（ウォームアップ除外）。RIR未入力を含むため、すべてがハードセットとは限りません。
-        </p>
-        {Object.entries(weekly.muscles).map(([name, v]) => (
-          <div className="muscle" key={name}>
-            <b>{name}</b>
-            <span>
-              {v.sets}セット · {v.frequency}回
-            </span>
-            <progress max={Math.max(20, v.sets)} value={v.sets} />
-          </div>
-        ))}
-        {!Object.keys(weekly.muscles).length && <p>今週の記録はありません。</p>}
-      </section>
+      <BodyGoal
+        database={database}
+        profile={data.profile}
+        wellness={data.wellness}
+      />
       <Link className="button full" to="/history">
         保存したトレーニング記録を確認
       </Link>
       <section className="card">
         <h2>回復・個人予測</h2>
         <p className="muted">
-          判断不可：睡眠・疲労と実績の関係や目標体型の到達率は、十分な記録と検証が必要です。個人予測モデルは未実装です。
+          睡眠・疲労と実績の関係は、記録が少ない間は判断できません。個人予測モデルは未実装です。
         </p>
       </section>
     </>
@@ -1500,7 +1531,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.6.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.7.0 / ローカル版</p>
       </section>
     </>
   );

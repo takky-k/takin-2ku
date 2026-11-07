@@ -22,7 +22,9 @@ export function useKeyboardEditing() {
       wasOpen = false,
       dismissed: Element | null = null,
       timer = 0,
-      frame = 0;
+      frame = 0,
+      releaseTimer = 0,
+      pointerHold = false;
     const viewport = () => {
       const height = vv?.height ?? innerHeight,
         focused = editable(document.activeElement),
@@ -33,6 +35,7 @@ export function useKeyboardEditing() {
         wasOpen = false;
       }
       const hide =
+        pointerHold ||
         (focused && document.activeElement !== dismissed) ||
         (wasOpen && shrunken);
       root.dataset.keyboardEditing = String(hide);
@@ -51,10 +54,13 @@ export function useKeyboardEditing() {
       dismissed = null;
       viewport();
       clearTimeout(timer);
-      timer = window.setTimeout(reveal, 250);
+      cancelAnimationFrame(frame);
+      if (editable(document.activeElement))
+        timer = window.setTimeout(reveal, 250);
     };
     const blur = () => {
       clearTimeout(timer);
+      cancelAnimationFrame(frame);
       timer = window.setTimeout(viewport, 0);
     };
     const resized = () => {
@@ -63,10 +69,26 @@ export function useKeyboardEditing() {
     };
     const pointer = (e: Event) => {
       if (editable(e.target as Element)) focus();
+      else {
+        clearTimeout(timer);
+        cancelAnimationFrame(frame);
+        // Keep a returning bottom bar from covering the button between
+        // pointerdown and click when an input near the screen bottom blurs.
+        pointerHold = root.dataset.keyboardEditing === "true";
+      }
+    };
+    const release = () => {
+      clearTimeout(releaseTimer);
+      releaseTimer = window.setTimeout(() => {
+        pointerHold = false;
+        viewport();
+      }, 50);
     };
     document.addEventListener("focusin", focus);
     document.addEventListener("focusout", blur);
     document.addEventListener("pointerdown", pointer);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", release);
     vv?.addEventListener("resize", resized);
     window.addEventListener("resize", resized);
     viewport();
@@ -74,9 +96,12 @@ export function useKeyboardEditing() {
       document.removeEventListener("focusin", focus);
       document.removeEventListener("focusout", blur);
       document.removeEventListener("pointerdown", pointer);
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("pointercancel", release);
       vv?.removeEventListener("resize", resized);
       window.removeEventListener("resize", resized);
       clearTimeout(timer);
+      clearTimeout(releaseTimer);
       cancelAnimationFrame(frame);
       delete root.dataset.keyboardEditing;
     };
