@@ -145,5 +145,14 @@ vite.config.ts.timestamp-*
 # Astro generated types
 .astro/
 
+# Local private backups and test artifacts
+.npm-cache/
+exports/
+backups/
+takin-2ku-*.json
+takin-2ku-*.csv
+test-results/
+playwright-report/
+
 # Turbo Repo
 .turbo
