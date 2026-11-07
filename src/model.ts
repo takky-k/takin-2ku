@@ -179,6 +179,10 @@ export const healthSchema = metaSchema.extend({
   source: z.string(),
   sourceRecordHash: z.string(),
   importedAt: z.iso.datetime(),
+  endAt: z.iso.datetime().optional(),
+  dateLocal: z.string().optional(),
+  stage: z.enum(["asleep", "core", "deep", "rem", "awake", "inBed"]).optional(),
+  externalId: z.string().optional(),
 });
 export const profileSchema = metaSchema.extend({
   units: z.enum(["kg", "lb"]),

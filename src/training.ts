@@ -5,6 +5,8 @@ import {
   kgToDisplay,
   localDate,
 } from "./model";
+import { parseRir, displayToKg, setSchema } from "./model";
+import { restorePendingSetInputs } from "./set-inputs";
 export function targets(
   t: Entities["plans"]["exercises"][number],
   unit: "kg" | "lb" = "kg",
@@ -78,7 +80,7 @@ export async function startWorkout(
             exerciseId: t.exerciseId,
             equipmentId: exercise.equipmentId,
             ordinal,
-            setType: target.setType,
+            setType: "normal",
             weightKg: target.weightKg,
             inputWeight: target.inputWeight,
             inputUnit: target.inputUnit,
@@ -152,9 +154,58 @@ export function comparison(
   };
 }
 export async function finishWorkout(db: AppDB, id: string) {
+  const rows = await db.sets
+      .where("sessionId")
+      .equals(id)
+      .filter((r) => !r.deletedAt)
+      .toArray(),
+    unit = (await db.profiles.get("main"))?.units ?? "kg";
+  for (const row of rows) {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(
+        `takin-table-draft-${db.name}-${row.id}-${unit}`,
+      );
+    } catch {
+      /* IndexedDB can still be available without localStorage. */
+    }
+    if (raw) {
+      try {
+        const fields = JSON.parse(raw);
+        if (
+          typeof fields.weight !== "string" ||
+          typeof fields.reps !== "string" ||
+          typeof fields.rir !== "string" ||
+          !fields.weight.trim() ||
+          !fields.reps.trim()
+        )
+          throw Error("未入力");
+        setSchema.parse({
+          ...row,
+          weightKg: displayToKg(Number(fields.weight), unit),
+          reps: Number(fields.reps),
+          rir: parseRir(fields.rir),
+        });
+      } catch {
+        throw Error(
+          `セット${row.ordinal + 1}に入力途中または不正な値があります。重量・回数・RIRを確認してください。`,
+        );
+      }
+    }
+  }
+  await restorePendingSetInputs(db, new Set(rows.map((r) => r.id)));
   await db.transaction("rw", [db.sessions, db.sets, db.queue], async () => {
     const session = await db.sessions.get(id);
     if (!session || session.deletedAt) throw Error("セッションがありません");
+    if (session.status === "finished") return;
+    if (
+      !(await db.sets
+        .where("sessionId")
+        .equals(id)
+        .filter((r) => !r.deletedAt && !!r.completedAt)
+        .count())
+    )
+      throw Error("完了したセットがありません");
     await save(
       db,
       "sessions",

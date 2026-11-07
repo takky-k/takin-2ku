@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>takin' 2ku｜睡眠ショートカット</title>
+    <style>
+      body {
+        font-family: -apple-system, sans-serif;
+        background: #101010;
+        color: #eee;
+        max-width: 700px;
+        margin: auto;
+        padding: 24px;
+        line-height: 1.9;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      code,
+      pre {
+        background: #222;
+        border-radius: 6px;
+      }
+      pre {
+        padding: 16px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      a {
+        color: #ddd;
+      }
+      li {
+        margin: 14px 0;
+      }
+      .notice {
+        padding: 14px;
+        border: 1px solid #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>睡眠をショートカットから取り込む</h1>
+    <p class="notice">
+      このページは手動セットアップ用です。署名済みの配布ショートカットや自動同期の完成機能ではありません。iPhone側の設定・初回許可は本人が行う必要があります。アプリはHealthへ一切書き込みません。
+    </p>
+    <ol>
+      <li>
+        iPhoneの「ショートカット」で新規作成し「takin' 2ku
+        睡眠読み取り」と命名します。
+      </li>
+      <li>
+        「ヘルスケアサンプルを検索」で睡眠を選択し、開始日を直近数日で絞ります。利用可能なアクション名・睡眠段階の取得方法はiOSで確認してください。測定値がなければ空リストのままにします。
+      </li>
+      <li>
+        「各項目を繰り返す」で開始日・終了日・値（睡眠段階）・データソースを取得します。開始/終了はISO
+        8601（例：2026-01-01T23:00:00+09:00）、dateLocalは今回の夜の起床日をyyyy-MM-ddにします。同じ夜の全区間には同じ起床日を設定します。日付は実データから取得し、固定しません。
+      </li>
+      <li>
+        各区間を以下の辞書へ変換し、samplesのリストに追加します。stageは「睡眠/Asleep」→asleep、「コア」→core、「深い睡眠」→deep、「レム」→rem、「覚醒」→awake、「就床中」→inBedへ対応させます。不明な分類を睡眠と決めつけないでください。
+      </li>
+      <li>
+        app、schemaVersion、samplesを含む辞書をJSONテキストとして「ファイルを保存」で保存します。アプリの「睡眠JSONファイル」で選択し、プレビュー後に取り込みます。
+      </li>
+    </ol>
+    <pre>
+{
+  "app": "takin-2ku-health",
+  "schemaVersion": 1,
+  "samples": [
+    {
+      "type": "sleep",
+      "startAt": "2026-01-01T23:00:00+09:00",
+      "endAt": "2026-01-02T06:00:00+09:00",
+      "dateLocal": "2026-01-02",
+      "stage": "asleep",
+      "source": "実際のデータソース名"
+    }
+  ]
+}</pre>
+    <p>
+      日時は架空の形式例です。サンプルを実データとして登録しないでください。空欄や存在しない睡眠を補完しません。サンプルの重複は検出し、就床中・覚醒は睡眠時間に加算しません。
+    </p>
+    <p>
+      取得できない場合はアプリ内の未連携の説明を維持します。身体情報はJSON選択後もこの端末内で処理します。
+    </p>
+    <p>
+      参考：<a href="https://support.apple.com/guide/shortcuts/apd3c845e881/ios"
+        >Apple：検索・フィルタアクション</a
+      >、<a
+        href="https://developer.apple.com/documentation/healthkit/hkcategoryvaluesleepanalysis"
+        >Apple：睡眠区分と重複区間</a
+      >
+    </p>
+    <p><a href="./#/">takin' 2kuに戻る</a></p>
+  </body>
+</html>
