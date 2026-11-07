@@ -60,6 +60,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
     wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
     null;
   const shortSleep = sleepHours !== null && sleepHours < 6;
+  const lowMood = wellness.some((w) => w.mood !== null && w.mood <= 2);
   const recommendations: Entities["recommendations"][] = [];
   for (const e of s.exercises) {
     const current = sets
@@ -94,20 +95,24 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       if (
         previous &&
         !locked &&
-        !pain &&
-        !fatigued &&
-        !shortSleep &&
         !r.inputState?.weightTouched &&
         !r.inputState?.repsTouched &&
         !r.rirRaw
       ) {
-        weightKg = previous.weightKg;
-        reps = previous.reps;
+        weightKg =
+          pain || fatigued || shortSleep || lowMood
+            ? Math.min(r.weightKg, previous.weightKg)
+            : previous.weightKg;
+        reps =
+          pain || fatigued || shortSleep || lowMood
+            ? Math.min(r.reps, previous.reps)
+            : previous.reps;
       }
       if (
         !pain &&
         !fatigued &&
         !shortSleep &&
+        !lowMood &&
         !locked &&
         previous &&
         previous.rir &&
@@ -139,9 +144,11 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
           ? "疲労・筋肉痛が強いため増量しません。まず休憩、セット数や最終セットRIRの調整を本人が検討してください。"
           : shortSleep
             ? "取得した睡眠が6時間未満のため、今回は増加を提案しません。具体的なパフォーマンス低下量は推測しません。"
-            : !evidence.length
-              ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
-              : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
+            : lowMood
+              ? "保存済みの気分が低いため、今回は増加を見送る保守的な提案です。気分だけで性能を断定しません。"
+              : !evidence.length
+                ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
+                : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
     recommendations.push({
       ...meta(),
       sessionId: s.id,
@@ -150,7 +157,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       exerciseId: e.exerciseId,
       planId: s.planId ?? "",
       sourceModel: "local-rule",
-      modelVersion: "2.2",
+      modelVersion: "2.3",
       originalWeightKg: current[0].weightKg,
       proposedWeightKg: proposedTargets[0].weightKg,
       proposedTargets,
@@ -239,6 +246,8 @@ export async function decideRecommendation(
           const previous = history[r.proposedTargets.indexOf(target)],
             useActual =
               previous &&
+              !row.isLocked &&
+              exercise?.autoProgression !== false &&
               r.evidenceIds.includes(previous.id) &&
               !row.inputState?.weightTouched &&
               !row.inputState?.repsTouched &&
@@ -257,6 +266,7 @@ export async function decideRecommendation(
               wellness.some(
                 (w) =>
                   w.painFlag ||
+                  (w.mood !== null && w.mood <= 2) ||
                   (w.fatigue ?? 0) >= 4 ||
                   Object.values(w.sorenessByMuscle).some((n) => n >= 4),
               ))

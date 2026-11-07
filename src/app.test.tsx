@@ -29,8 +29,18 @@ it("renders the simplified dashboard without slogans, copy or demo controls", as
     </HashRouter>,
   );
   expect(
-    await screen.findByRole("heading", { name: "今日のトレーニング" }),
+    await screen.findByRole("heading", {
+      name: "今日のコンディション",
+      level: 1,
+    }),
   ).toBeInTheDocument();
+  expect(screen.queryByText("今週のトレーニング")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "マイメニュー" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("navigation").querySelectorAll("a")).toHaveLength(4);
+  expect(screen.queryByRole("link", { name: "履歴" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("link", { name: "記録" }));
   expect(
     await screen.findByRole("heading", { name: "A｜背中・リアデルト・二頭筋" }),
   ).toBeInTheDocument();

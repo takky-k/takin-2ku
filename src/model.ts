@@ -98,6 +98,7 @@ export const sessionSchema = metaSchema.extend({
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
   status: z.enum(["active", "finished"]),
+  requiresTargetReview: z.boolean().optional(),
   planId: z.string().nullable(),
   exercises: z.array(snapshotSchema),
   notes: z.string(),
