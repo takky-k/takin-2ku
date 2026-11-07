@@ -33,6 +33,34 @@ async function requireCondition(db: AppDB, planId: string, muscles: string[]) {
     throw new ConditionRequired(planId);
 }
 const preparing = new Map<string, { planId: string; task: Promise<string> }>();
+export async function refreshTargets(db: AppDB, id: string) {
+  const session = await db.sessions.get(id);
+  if (!session || session.status !== "active" || !session.planId)
+    throw Error("記録中のメニューがありません");
+  await requireCondition(db, session.planId, [
+    ...new Set(session.exercises.map((e) => e.muscle)),
+  ]);
+  const recs = await generateRecommendations(db, id);
+  await db.transaction(
+    "rw",
+    [
+      db.sessions,
+      db.sets,
+      db.recommendations,
+      db.wellness,
+      db.health,
+      db.exercises,
+      db.queue,
+    ],
+    async () => {
+      await requireCondition(db, session.planId!, [
+        ...new Set(session.exercises.map((e) => e.muscle)),
+      ]);
+      for (const r of recs) await decideRecommendation(db, r.id, true);
+    },
+  );
+  return recs.length;
+}
 export function prepareWorkout(
   db: AppDB,
   plan: Entities["plans"],

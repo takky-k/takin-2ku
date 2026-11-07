@@ -1,3 +1,4 @@
+import { resolvedReps } from "./set-values";
 import { Fragment, useEffect, useState, useRef } from "react";
 import { type AppDB, remove } from "./db";
 import {
@@ -22,40 +23,65 @@ export function SetTable({
   unit: "kg" | "lb";
 }) {
   return (
-    <table className="workout-table compact-sheet">
-      <caption className="sr-only">セットの直接入力</caption>
-      <colgroup>
-        <col className="set-column" />
-        <col />
-        <col />
-        <col />
-        <col className="delete-column" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col">SET</th>
-          <th scope="col">重量 ({unit})</th>
-          <th scope="col">REPS</th>
-          <th scope="col">RIR</th>
-          <th scope="col">
-            <span className="sr-only">最終行の削除</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          <SetRow
-            key={row.id + "-" + unit}
-            database={database}
-            row={row}
-            previous={previous[index]}
-            index={index}
-            unit={unit}
-            last={index === rows.length - 1}
-          />
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="workout-table compact-sheet">
+        <caption className="sr-only">セットの直接入力</caption>
+        <colgroup>
+          <col className="set-column" />
+          <col className="previous-column" />
+          <col />
+          <col />
+          <col />
+          <col className="delete-column" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">SET</th>
+            <th scope="col">前回</th>
+            <th scope="col">重量 ({unit})</th>
+            <th scope="col">REPS</th>
+            <th scope="col">RIR</th>
+            <th scope="col">
+              <span className="sr-only">最終行の削除</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <SetRow
+              key={row.id + "-" + unit}
+              database={database}
+              row={row}
+              previous={previous[index]}
+              index={index}
+              unit={unit}
+              last={index === rows.length - 1}
+            />
+          ))}
+        </tbody>
+      </table>
+      <details className="set-notes">
+        <summary>メモ</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>SET</th>
+              <th>メモ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id}>
+                <th>{index + 1}</th>
+                <td>
+                  <SetNote database={database} row={row} index={index} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </>
   );
 }
 function initial(row: WorkoutSet, unit: "kg" | "lb"): Fields {
@@ -123,8 +149,7 @@ function SetRow({
       }
       return initial(row, unit);
     }),
-    [error, setError] = useState(""),
-    [note, setNote] = useState(row.notes);
+    [error, setError] = useState("");
   const dirty = useRef(false),
     latest = useRef(row),
     observedRevision = useRef(row.revision);
@@ -148,17 +173,26 @@ function SetRow({
     observedRevision.current = row.revision;
     if (!dirty.current) {
       setFields(initial(row, unit));
-      setNote(row.notes);
     }
   }, [row.revision, unit]);
-  async function persist(next: Fields, notes = note) {
+  async function persist(next: Fields) {
     try {
+      const current = latest.current;
       const validWeight =
         next.weight.trim() !== "" &&
         Number.isFinite(Number(next.weight)) &&
         Number(next.weight) >= 0 &&
         displayToKg(Number(next.weight), unit) <= 2000;
-      const validReps = /^\d+$/.test(next.reps) && Number(next.reps) <= 1000;
+      let repsValue = current.reps,
+        repsSource: WorkoutSet["repsSource"] = current.repsSource,
+        validReps = true;
+      try {
+        const resolved = resolvedReps(current, next);
+        repsValue = resolved.reps;
+        repsSource = resolved.source;
+      } catch {
+        validReps = false;
+      }
       let rir: WorkoutSet["rir"] = null,
         validRir = true;
       try {
@@ -166,8 +200,14 @@ function SetRow({
       } catch {
         validRir = false;
       }
-      const current = latest.current,
-        recorded = validWeight && validReps && validRir && next.repsTouched;
+      const recorded =
+        validWeight &&
+        validReps &&
+        validRir &&
+        (next.weightTouched ||
+          next.repsTouched ||
+          next.rir.trim() !== "" ||
+          !!current.completedAt);
       await saveSetInputs(database, current, {
         weightKg: validWeight
           ? next.weightTouched
@@ -180,7 +220,8 @@ function SetRow({
             ? Number(next.weight)
             : kgToDisplay(current.weightKg, unit)
           : current.inputWeight,
-        reps: validReps ? Number(next.reps) : current.reps,
+        reps: validReps ? repsValue : current.reps,
+        repsSource: validReps ? repsSource : current.repsSource,
         rir: validRir ? rir : current.rir,
         rirRaw: next.rir,
         rirConfidence: rir
@@ -189,7 +230,6 @@ function SetRow({
             : "range"
           : "unknown",
         inputState: next,
-        notes,
         completedAt: recorded
           ? (current.completedAt ?? new Date().toISOString())
           : null,
@@ -273,6 +313,19 @@ function SetRow({
             {row.completedAt ? "入力済み" : "未入力"}
           </span>
         </th>
+        <td className="previous-cell">
+          {reference ? (
+            <>
+              <span>
+                {round(kgToDisplay(reference.weightKg, unit))}
+                {unit}
+              </span>
+              <span>× {reference.reps}回</span>
+            </>
+          ) : (
+            "—"
+          )}
+        </td>
         <td>
           <input
             aria-label={`セット${index + 1}の重量`}
@@ -296,7 +349,7 @@ function SetRow({
             min="0"
             step="1"
             placeholder={
-              row.inputState && !row.inputState.repsTouched
+              row.inputState && !row.inputState.repsTouched && row.reps > 0
                 ? String(row.reps)
                 : "回数"
             }
@@ -336,36 +389,48 @@ function SetRow({
       </tr>
       {error && (
         <tr>
-          <td colSpan={5} role="alert" className="error">
+          <td colSpan={6} role="alert" className="error">
             {error}
           </td>
         </tr>
       )}
-      <tr className="set-detail-row">
-        <td colSpan={5}>
-          {reference && (
-            <small className="row-reference">
-              前回：{round(kgToDisplay(reference.weightKg, unit))}
-              {unit} × {reference.reps}回 / RIR {formatRir(reference.rir)}
-              {!previous ? "（日付不明の比較メモ）" : ""}
-            </small>
-          )}
-          <details>
-            <summary>
-              セット{index + 1}のメモ{note ? " · 記入あり" : ""}
-            </summary>
-            <textarea
-              aria-label={`セット${index + 1}のメモ`}
-              value={note}
-              onChange={(e) => {
-                dirty.current = true;
-                setNote(e.target.value);
-                void persist(fields, e.target.value);
-              }}
-            />
-          </details>
-        </td>
-      </tr>
     </Fragment>
+  );
+}
+
+function SetNote({
+  database,
+  row,
+  index,
+}: {
+  database: AppDB;
+  row: WorkoutSet;
+  index: number;
+}) {
+  const [note, setNote] = useState(row.notes),
+    [error, setError] = useState(""),
+    dirty = useRef(false);
+  useEffect(() => {
+    if (!dirty.current) setNote(row.notes);
+  }, [row.revision]);
+  return (
+    <>
+      <textarea
+        aria-label={`セット${index + 1}のメモ`}
+        value={note}
+        onChange={(e) => {
+          dirty.current = true;
+          const value = e.target.value;
+          setNote(value);
+          void saveSetInputs(database, row, { notes: value })
+            .then(() => setError(""))
+            .catch((e) => setError(String(e)));
+        }}
+        onBlur={() => {
+          dirty.current = false;
+        }}
+      />
+      {error && <p role="alert">保存できませんでした：{error}</p>}
+    </>
   );
 }

@@ -72,12 +72,12 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
     "",
   );
   await expect(
-    card.getByRole("complementary", {
-      name: "ラットプルダウンの永続フォームメモ",
-    }),
+    card.getByLabel("ラットプルダウンの永続フォームメモ"),
   ).toBeVisible();
+  await expect(card.getByText(/胸にバーを付ける必要はない/)).not.toBeVisible();
+  await card.locator(".evergreen-notes summary").click();
   await expect(card.getByText(/胸にバーを付ける必要はない/)).toBeVisible();
-  await expect(card.getByRole("columnheader")).toHaveCount(5);
+  await expect(card.getByRole("columnheader")).toHaveCount(6);
   await expect(card.getByRole("combobox")).toHaveCount(0);
   await expect(card.getByRole("checkbox")).toHaveCount(0);
   await expect(card.getByLabel(/セット.*の操作/)).toHaveCount(0);
@@ -254,7 +254,9 @@ test("approval changes only this session, template and actual RIR stay intact", 
     .getAttribute("href");
   await startA(page);
   await expect(page.getByRole("table")).toHaveCount(5);
-  await expect(page.getByRole('heading',{name:'今日の目標を確認',exact:true})).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
+  ).toHaveCount(0);
   await expect(card.getByLabel("セット1の回数", { exact: true })).toHaveValue(
     "",
   );
