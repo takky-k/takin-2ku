@@ -17,6 +17,7 @@ interface Pending {
   token: string;
   patch: SetInputs;
   base: Record<string, unknown>;
+  intermediate?: SetInputs[];
 }
 const patchSchema = setSchema
   .pick({
@@ -39,36 +40,54 @@ const pendingSchema = z
     token: z.string().min(1),
     patch: patchSchema,
     base: z.record(z.string(), z.unknown()),
+    intermediate: z.array(patchSchema).max(100).optional(),
   })
   .strict();
 const prefix = (db: AppDB) => `takin-pending-set:${db.name}:`;
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
+const inFlight = new Map<string, Set<Promise<void>>>();
+// Live-query props can lag one committed write. Keep the acknowledged row as
+// the next journal's baseline, before removing the preceding journal token.
+const acknowledged = new Map<string, WorkoutSet>();
 async function apply(db: AppDB, pending: Pending, recovering = false) {
-  await db.transaction("rw", [db.sets, db.queue], async () => {
-    const row = await db.sets.get(pending.id);
-    if (!row || row.deletedAt) return;
-    if (recovering) {
-      for (const key of Object.keys(pending.patch)) {
-        const current = (row as unknown as Record<string, unknown>)[key];
-        if (
-          !same(current, pending.base[key]) &&
-          !same(
-            current,
-            (pending.patch as unknown as Record<string, unknown>)[key],
+  const committed = await db.transaction(
+    "rw",
+    [db.sets, db.queue],
+    async () => {
+      const row = await db.sets.get(pending.id);
+      if (!row || row.deletedAt) return;
+      if (recovering) {
+        for (const key of Object.keys(pending.patch)) {
+          const current = (row as unknown as Record<string, unknown>)[key];
+          if (
+            !same(current, pending.base[key]) &&
+            !same(
+              current,
+              (pending.patch as unknown as Record<string, unknown>)[key],
+            ) &&
+            !pending.intermediate?.some((p) =>
+              same(current, (p as unknown as Record<string, unknown>)[key]),
+            )
           )
-        )
-          throw Error(
-            "保存途中のセット入力が別の編集と競合しています。入力内容を確認してください。",
-          );
+            throw Error(
+              "保存途中のセット入力が別の編集と競合しています。入力内容を確認してください。",
+            );
+        }
       }
-    }
-    await save(
-      db,
-      "sets",
-      revised(setSchema.parse({ ...row, ...pending.patch })),
-    );
-  });
+      await save(
+        db,
+        "sets",
+        revised(setSchema.parse({ ...row, ...pending.patch })),
+      );
+      return db.sets.get(pending.id);
+    },
+  );
+  if (committed) {
+    acknowledged.set(prefix(db) + pending.id, committed);
+    if (acknowledged.size > 1000)
+      acknowledged.delete(acknowledged.keys().next().value!);
+  }
   try {
     const key = prefix(db) + pending.id;
     const current = localStorage.getItem(key);
@@ -84,6 +103,8 @@ export async function saveSetInputs(
   patch: SetInputs,
 ) {
   const key = prefix(db) + row.id;
+  const known = acknowledged.get(key);
+  if (known && known.revision >= row.revision) row = known;
   let previous: Pending | undefined;
   try {
     const text = localStorage.getItem(key);
@@ -107,18 +128,34 @@ export async function saveSetInputs(
     token: crypto.randomUUID(),
     patch: merged,
     base,
+    intermediate: previous
+      ? [...(previous.intermediate ?? []), previous.patch].slice(-100)
+      : [],
   };
   try {
     localStorage.setItem(key, JSON.stringify(pending));
   } catch {
     /* Continue with primary IndexedDB storage. */
   }
-  await apply(db, pending);
+  const write = apply(db, pending),
+    active = inFlight.get(db.name) ?? new Set<Promise<void>>();
+  inFlight.set(db.name, active);
+  active.add(write);
+  try {
+    await write;
+  } finally {
+    active.delete(write);
+    if (!active.size) inFlight.delete(db.name);
+  }
 }
 export async function restorePendingSetInputs(
   db: AppDB,
   onlyIds?: Set<string>,
 ) {
+  // A finish click can run while the preceding input's transaction is still
+  // committing. Wait for this page's own writes before replaying its journal.
+  while (inFlight.get(db.name)?.size)
+    await Promise.all([...inFlight.get(db.name)!]);
   let keys: string[];
   try {
     keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix(db)));

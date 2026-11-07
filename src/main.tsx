@@ -473,15 +473,30 @@ function Workout() {
   const { data, database } = useData();
   const [finishing, setFinishing] = useState(false);
   const s = data?.sessions.find((s) => s.status === "active");
+  const latestFinished = data?.sessions
+    .filter((s) => s.status === "finished")
+    .sort(
+      (a, b) =>
+        sessionDay(b).localeCompare(sessionDay(a)) ||
+        b.startedAt.localeCompare(a.startedAt),
+    )[0];
   return (
     <>
       <Title eyebrow="TRAINING" title="トレーニング" />
+      {!s && latestFinished && (
+        <section className="card">
+          <h2>トレーニング後の体重</h2>
+          <p className="hint">
+            {sessionDay(latestFinished)} · {latestFinished.name}
+          </p>
+          <WellnessEditor sessionId={latestFinished.id} />
+        </section>
+      )}
       {s ? (
         <>
           <SessionEditor session={s} />
           <section className="card">
-            <h2>トレーニング後の体重</h2>
-            <WellnessEditor sessionId={s.id} />
+            <h2>今回のトレーニングを終了</h2>
             <button className="primary full" onClick={() => setFinishing(true)}>
               トレーニングを終了
             </button>
@@ -934,7 +949,14 @@ function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
       sessionId={sessionId}
       unit={data.profile.units}
       health={data.health}
-      date={existing?.dateLocal ?? localDate()}
+      date={
+        existing?.dateLocal ??
+        (sessionId
+          ? data.sessions.find((s) => s.id === sessionId)
+            ? sessionDay(data.sessions.find((s) => s.id === sessionId)!)
+            : localDate()
+          : localDate())
+      }
       bodyOnly={sessionId !== null}
     />
   );

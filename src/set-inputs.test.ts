@@ -1,6 +1,7 @@
 import { it, expect, afterEach } from "vitest";
 import { AppDB, seed, save, revised, remove } from "./db";
 import { startWorkout } from "./training";
+import { finishWorkout } from "./training";
 import {
   saveSetInputs,
   restorePendingSetInputs,
@@ -22,6 +23,104 @@ async function fixture() {
     row: (await db.sets.where("sessionId").equals(id).toArray())[0],
   };
 }
+it("flushes rapid local edits before finishing without a false recovery conflict", async () => {
+  const { db, row } = await fixture();
+  const patch: SetInputs = {
+    weightKg: row.weightKg,
+    reps: 8,
+    rir: { min: 0, max: 0 },
+    rirRaw: "0",
+    rirConfidence: "exact",
+    inputUnit: row.inputUnit,
+    inputWeight: row.inputWeight,
+    completedAt: new Date().toISOString(),
+  };
+  const first = saveSetInputs(db, row, patch),
+    second = saveSetInputs(db, row, {
+      ...patch,
+      rir: { min: 1, max: 2 },
+      rirRaw: "1~2",
+      rirConfidence: "range",
+      completedAt: new Date(Date.now() + 1).toISOString(),
+    });
+  await finishWorkout(db, row.sessionId);
+  await Promise.all([first, second]);
+  expect((await db.sessions.get(row.sessionId))?.status).toBe("finished");
+  expect((await db.sets.get(row.id))?.rir).toEqual({ min: 1, max: 2 });
+});
+it("recovers after an interrupted burst whose earlier authored value already reached IndexedDB", async () => {
+  const { db, row } = await fixture(),
+    a: SetInputs = {
+      weightKg: row.weightKg,
+      reps: 8,
+      rir: { min: 0, max: 0 },
+      rirRaw: "0",
+      rirConfidence: "exact",
+      inputUnit: row.inputUnit,
+      inputWeight: row.inputWeight,
+      completedAt: "2026-01-01T00:00:00.000Z",
+    },
+    b: SetInputs = {
+      ...a,
+      rir: { min: 1, max: 2 },
+      rirRaw: "1~2",
+      rirConfidence: "range",
+      completedAt: "2026-01-01T00:00:00.001Z",
+    };
+  await save(db, "sets", revised({ ...row, ...a }));
+  localStorage.setItem(
+    `takin-pending-set:${db.name}:${row.id}`,
+    JSON.stringify({
+      id: row.id,
+      token: "synthetic-interrupted-burst",
+      base: Object.fromEntries(
+        Object.keys(b).map((k) => [
+          k,
+          (row as unknown as Record<string, unknown>)[k],
+        ]),
+      ),
+      patch: b,
+      intermediate: [a],
+    }),
+  );
+  await restorePendingSetInputs(db);
+  expect((await db.sets.get(row.id))?.rir).toEqual({ min: 1, max: 2 });
+  expect(
+    localStorage.getItem(`takin-pending-set:${db.name}:${row.id}`),
+  ).toBeNull();
+});
+it("uses the last acknowledged write when live-query props still describe an older row", async () => {
+  const { db, row } = await fixture(),
+    a: SetInputs = {
+      weightKg: row.weightKg,
+      reps: 8,
+      rir: { min: 0, max: 0 },
+      rirRaw: "0",
+      rirConfidence: "exact",
+      inputUnit: row.inputUnit,
+      inputWeight: row.inputWeight,
+      completedAt: "2026-01-01T00:00:00.000Z",
+    };
+  await saveSetInputs(db, row, a);
+  const fail = () => {
+    throw Error("synthetic interrupted next write");
+  };
+  db.queue.hook("creating", fail);
+  await expect(
+    saveSetInputs(db, row, {
+      ...a,
+      reps: 9,
+      rir: { min: 1, max: 2 },
+      rirRaw: "1~2",
+      rirConfidence: "range",
+      completedAt: "2026-01-01T00:00:00.001Z",
+    }),
+  ).rejects.toThrow();
+  db.queue.hook("creating").unsubscribe(fail);
+  await restorePendingSetInputs(db);
+  expect((await db.sets.get(row.id))?.reps).toBe(9);
+  expect((await db.sets.get(row.id))?.rir).toEqual({ min: 1, max: 2 });
+});
 it("journals completion before async storage and restores zero RIR after a failed write", async () => {
   const { db, row } = await fixture();
   const patch: SetInputs = {
