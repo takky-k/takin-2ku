@@ -29,9 +29,9 @@ export function SetTable({
         <colgroup>
           <col className="set-column" />
           <col className="previous-column" />
-          <col />
-          <col />
-          <col />
+          <col className="weight-column" />
+          <col className="reps-column" />
+          <col className="rir-column" />
           <col className="delete-column" />
         </colgroup>
         <thead>

@@ -1145,7 +1145,7 @@ html[data-keyboard-editing="true"] .timer {
 .compact-sheet .set-column {
   width: 24px;
 }
-.compact-sheet .previous-column {
+.compact-sheet col.previous-column {
   width: 58px;
 }
 .compact-sheet .delete-column {
@@ -1208,4 +1208,70 @@ html[data-keyboard-editing="true"] .timer {
   width: 100%;
   font-size: 14px;
   min-height: 48px;
+}
+/* Keep seven-character RIR ranges visible without triggering iOS input zoom. */
+.compact-sheet .set-column {
+  width: 22px;
+}
+.compact-sheet col.previous-column {
+  width: 44px;
+}
+.compact-sheet .reps-column {
+  width: 42px;
+}
+.compact-sheet .rir-column {
+  width: 84px;
+}
+.compact-sheet .delete-column {
+  width: 30px;
+}
+.compact-sheet .delete-last {
+  min-width: 28px;
+  width: 28px;
+  padding: 0;
+}
+.compact-sheet input:not([type="checkbox"]) {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
+  padding: 5px 2px;
+}
+.compact-sheet th {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  padding-inline: 1px;
+}
+.session-heading {
+  display: block;
+}
+.goal-input {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.goal-input label {
+  flex: 1;
+  min-width: 0;
+}
+.goal-input button {
+  margin-bottom: 12px;
+}
+.progress-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0;
+}
+.progress-value strong {
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+.progress-value span {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.body-goal progress {
+  width: 100%;
 }
