@@ -2,6 +2,7 @@ import { type AppDB, save, revised } from "./db";
 import { type Entities, localDate } from "./model";
 import { startWorkout } from "./training";
 import { plannedMuscles } from "./wellness";
+import { applyOnlineAdvice } from "./online-advice";
 import {
   generateRecommendations,
   decideRecommendation,
@@ -55,6 +56,7 @@ export async function startFromSavedCondition(
   const id = await prepareWorkout(db, plan, profile.units);
   if (existing?.id === id && existing.requiresTargetReview === false)
     await refreshTargets(db, id);
+  await applyOnlineAdvice(db, id);
   return id;
 }
 export async function refreshTargets(db: AppDB, id: string) {

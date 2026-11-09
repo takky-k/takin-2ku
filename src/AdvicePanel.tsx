@@ -4,7 +4,11 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type { AppDB } from "./db";
 import { refreshTargets } from "./start-targets";
 import { kgToDisplay, round, formatRir } from "./model";
+import { AIConnection } from "./AIConnection";
+import { applyOnlineAdvice } from "./online-advice";
+import { useAI } from "./ai-auth";
 export function AdvicePanel({ database }: { database: AppDB }) {
+  const ai = useAI();
   const data = useLiveQuery(
     async () => ({
       sessions: await database.sessions.toArray(),
@@ -42,7 +46,11 @@ export function AdvicePanel({ database }: { database: AppDB }) {
         </div>
       </div>
       <section className="card">
-        <span className="tag">ローカルルール · 外部送信なし</span>
+        <span className="tag">
+          {ai.user && ai.consent
+            ? "Cloudflare AI + ローカル安全確認"
+            : "端末内計算"}
+        </span>
         <h2>今日の予定を確認する</h2>
         <p className="muted">
           保存済みコンディションから安全な目標を再計算し、未入力のセットへ自動反映します。記録済みセットやマイメニューは変更しません。
@@ -54,7 +62,10 @@ export function AdvicePanel({ database }: { database: AppDB }) {
               disabled={busy}
               className="primary full"
               onClick={() =>
-                void perform(() => refreshTargets(database, active.id))
+                void perform(async () => {
+                  await refreshTargets(database, active.id);
+                  await applyOnlineAdvice(database, active.id);
+                })
               }
             >
               目標を再計算して自動反映
@@ -69,9 +80,10 @@ export function AdvicePanel({ database }: { database: AppDB }) {
           </Link>
         )}
         <p className="hint">
-          外部AIチャット・個人予測は未実装です。信頼度は未評価。無料APIの設定は不要です。
+          外部AIはログイン・送信同意がある場合だけ使用します。失敗時は端末内計算を継続。個人予測・信頼度の検証は未実装です。
         </p>
       </section>
+      <AIConnection />
       <p role="alert">{message}</p>
       {data.recommendations
         .filter((r) => !r.deletedAt && r.sessionId === active?.id)
@@ -98,8 +110,8 @@ export function AdvicePanel({ database }: { database: AppDB }) {
             })}
             <p>{r.rationale}</p>
             <p className="hint">
-              local-rule v{r.modelVersion} · 根拠 {r.evidenceIds.length}セット ·
-              信頼度未評価
+              {r.sourceModel} v{r.modelVersion} · 根拠 {r.evidenceIds.length}件
+              · 信頼度未評価
             </p>
             <span className="tag">
               {r.status === "accepted"
