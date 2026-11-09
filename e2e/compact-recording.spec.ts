@@ -46,6 +46,15 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   await expect(card.getByText("セット1のメモ", { exact: true })).toHaveCount(0);
   await expect(card.getByRole("columnheader")).toHaveCount(6);
   await expect(card.getByRole("columnheader").nth(1)).toHaveText("前回");
+  const reps = card.getByLabel("セット1の回数", { exact: true });
+  await expect(reps).toHaveValue("");
+  await expect(reps).toHaveAttribute("placeholder", "8");
+  await reps.fill("15");
+  await reps.fill("");
+  await reps.blur();
+  await page.reload();
+  await expect(reps).toHaveValue("");
+  await expect(reps).toHaveAttribute("placeholder", "8");
   await page.getByRole("button", { name: "1分", exact: true }).click();
   const input = card.getByLabel("セット1のRIR", { exact: true });
   await input.fill("0");

@@ -620,7 +620,8 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
       ordinal: (last?.ordinal ?? -1) + 1,
       setType: "normal",
       weightKg: last?.weightKg ?? 0,
-      reps: 0,
+      reps: last?.defaultReps ?? last?.reps ?? 0,
+      defaultReps: last?.defaultReps ?? last?.reps,
       inputState: {
         weight: String(round(kgToDisplay(last?.weightKg ?? 0, unit))),
         reps: "",

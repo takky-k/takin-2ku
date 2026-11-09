@@ -2,8 +2,9 @@ import { type WorkoutSet, displayToKg, parseRir, setSchema } from "./model";
 export function resolvedReps(row: WorkoutSet, fields = row.inputState) {
   if (!fields)
     return { reps: row.reps, source: row.repsSource ?? ("entered" as const) };
-  if (!fields.reps.trim() && !fields.repsTouched && row.reps > 0)
-    return { reps: row.reps, source: "default" as const };
+  const defaultReps = row.defaultReps ?? (row.reps > 0 ? row.reps : undefined);
+  if (!fields.reps.trim() && defaultReps !== undefined)
+    return { reps: defaultReps, source: "default" as const };
   if (!/^\d+$/.test(fields.reps) || Number(fields.reps) > 1000)
     throw Error("回数を入力してください");
   return { reps: Number(fields.reps), source: "entered" as const };

@@ -7,6 +7,7 @@ export type SetInputs = Partial<
     | "weightKg"
     | "reps"
     | "repsSource"
+    | "defaultReps"
     | "rir"
     | "rirRaw"
     | "rirConfidence"
@@ -29,6 +30,7 @@ const patchSchema = setSchema
     weightKg: true,
     reps: true,
     repsSource: true,
+    defaultReps: true,
     rir: true,
     rirRaw: true,
     rirConfidence: true,

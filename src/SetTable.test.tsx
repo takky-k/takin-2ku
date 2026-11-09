@@ -87,3 +87,38 @@ it("records RIR zero with unchanged default reps and preserves empty RIR on the 
     ),
   ).toBe(true);
 });
+it("restores the faint default after an override is erased and saves it on finish", async () => {
+  const { db, id, row } = await setup();
+  const view = render(
+    <SetTable database={db} rows={[row]} previous={[]} unit="lb" />,
+  );
+  const reps = screen.getByLabelText("セット1の回数");
+  expect(reps).toHaveValue(null);
+  expect(reps).toHaveAttribute("placeholder", String(row.reps));
+  fireEvent.change(reps, { target: { value: "15" } });
+  await waitFor(async () => expect((await db.sets.get(row.id))?.reps).toBe(15));
+  fireEvent.change(reps, { target: { value: "" } });
+  fireEvent.blur(reps);
+  await waitFor(async () => {
+    const saved = await db.sets.get(row.id);
+    expect(saved?.reps).toBe(row.reps);
+    expect(saved?.repsSource).toBe("default");
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  view.unmount();
+  render(
+    <SetTable
+      database={db}
+      rows={[(await db.sets.get(row.id))!]}
+      previous={[]}
+      unit="lb"
+    />,
+  );
+  expect(screen.getByLabelText("セット1の回数")).toHaveValue(null);
+  expect(screen.getByLabelText("セット1の回数")).toHaveAttribute(
+    "placeholder",
+    String(row.reps),
+  );
+  await finishWorkout(db, id);
+  expect((await db.sets.get(row.id))?.reps).toBe(row.reps);
+});

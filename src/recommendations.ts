@@ -297,6 +297,7 @@ export async function decideRecommendation(
               weightKg: target.weightKg,
               inputWeight: kgToDisplay(target.weightKg, row.inputUnit ?? "kg"),
               reps: target.reps,
+              defaultReps: target.reps,
               targetRir: target.targetRir,
               inputState: row.inputState
                 ? {

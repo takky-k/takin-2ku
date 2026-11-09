@@ -15,7 +15,7 @@ async function setup() {
     id = await startWorkout(db, plan, "lb");
   return { db, plan, id };
 }
-it("finishes unchanged target reps only on final confirmation and rejects explicitly cleared reps atomically", async () => {
+it("finishes unchanged and explicitly cleared reps using the displayed default", async () => {
   const { db, id } = await setup(),
     rows = await db.sets.where("sessionId").equals(id).toArray();
   expect(rows.every((r) => !r.completedAt)).toBe(true);
@@ -28,19 +28,8 @@ it("finishes unchanged target reps only on final confirmation and rejects explic
       inputState: { ...row.inputState!, repsTouched: true, reps: "" },
     }),
   );
-  await expect(finishWorkout(db, id)).rejects.toThrow("入力");
-  expect((await db.sessions.get(id))?.status).toBe("active");
-  expect(
-    (await db.sets.where("sessionId").equals(id).toArray()).every(
-      (r) => !r.completedAt,
-    ),
-  ).toBe(true);
-  await save(
-    db,
-    "sets",
-    revised({ ...row, inputState: { ...row.inputState!, repsTouched: false } }),
-  );
   await finishWorkout(db, id);
+  expect((await db.sets.get(row.id))?.reps).toBe(row.defaultReps);
   expect(
     (await db.sets.where("sessionId").equals(id).toArray()).every(
       (r) => r.completedAt && r.repsSource === "default",
