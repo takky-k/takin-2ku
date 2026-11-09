@@ -116,6 +116,7 @@ export const setSchema = metaSchema.extend({
   weightKg: z.number().min(0).max(2000),
   reps: z.number().int().min(0).max(1000),
   repsSource: z.enum(["entered", "default"]).optional(),
+  defaultReps: z.number().int().min(0).max(1000).optional(),
   rir: rirSchema,
   rpe: z.number().min(1).max(10).nullable(),
   completedAt: z.iso.datetime().nullable(),

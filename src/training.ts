@@ -123,6 +123,7 @@ export async function startWorkout(
             inputUnit: target.inputUnit,
             loadMode: exercise.measurementBasis,
             reps: target.reps,
+            defaultReps: target.reps,
             inputState: {
               weight: String(target.inputWeight),
               reps: "",

@@ -97,7 +97,10 @@ function initial(row: WorkoutSet, unit: "kg" | "lb"): Fields {
       }
     : {
         weight: String(round(kgToDisplay(row.weightKg, unit))),
-        reps: row.completedAt ? String(row.reps) : "",
+        reps:
+          row.completedAt && row.repsSource !== "default"
+            ? String(row.reps)
+            : "",
         rir: row.rir === null ? "" : formatRir(row.rir),
         weightTouched: false,
         repsTouched: !!row.completedAt,
@@ -221,6 +224,8 @@ function SetRow({
             : kgToDisplay(current.weightKg, unit)
           : current.inputWeight,
         reps: validReps ? repsValue : current.reps,
+        defaultReps:
+          current.defaultReps ?? (current.reps > 0 ? current.reps : undefined),
         repsSource: validReps ? repsSource : current.repsSource,
         rir: validRir ? rir : current.rir,
         rirRaw: next.rir,
@@ -349,8 +354,8 @@ function SetRow({
             min="0"
             step="1"
             placeholder={
-              row.inputState && !row.inputState.repsTouched && row.reps > 0
-                ? String(row.reps)
+              row.defaultReps !== undefined || row.reps > 0
+                ? String(row.defaultReps ?? row.reps)
                 : "回数"
             }
             value={fields.reps}
