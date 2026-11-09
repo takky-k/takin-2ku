@@ -63,6 +63,9 @@ import { CsvImport } from "./CsvImport";
 import { installDefaultPlans } from "./db";
 import { sessionDay, finishWorkout, skipExerciseToday } from "./training";
 import { AdvicePanel } from "./AdvicePanel";
+import { AIConnection } from "./AIConnection";
+import { applyOnlineAdvice } from "./online-advice";
+import { initAIAuth } from "./ai-auth";
 import { WellnessForm } from "./WellnessForm";
 import { SetTable } from "./SetTable";
 import { buildSessionMemo } from "./session-memo";
@@ -128,6 +131,14 @@ const date = (s: string) =>
   });
 export function App() {
   useKeyboardEditing();
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("takin-ai-auth-enabled") === "true")
+        void initAIAuth();
+    } catch {
+      /* Local mode remains available. */
+    }
+  }, []);
   const route = useLocation();
   const { data, database } = useData(),
     { error, setError } = useUI(),
@@ -352,6 +363,13 @@ function MyMenus() {
                 run(async () => {
                   try {
                     await prepareWorkout(database, p, data.profile!.units);
+                    const active = (await database.sessions.toArray()).find(
+                      (s) =>
+                        !s.deletedAt &&
+                        s.status === "active" &&
+                        s.planId === p.id,
+                    );
+                    if (active) await applyOnlineAdvice(database, active.id);
                     useUI.getState().setError("");
                     window.location.hash = "/workout/current";
                   } catch (e) {
@@ -1228,6 +1246,7 @@ function Settings({ storage }: { storage: string }) {
   return (
     <>
       <Title eyebrow="MAKE IT YOURS" title="設定" />
+      <AIConnection />
       <section className="card">
         <h2>トレーニング設定</h2>
         <div className="filter">
@@ -1503,8 +1522,7 @@ function Settings({ storage }: { storage: string }) {
         <p>保存領域：{storage}</p>
         <p>将来の同期キュー：{data.pending}件（送信なし）</p>
         <p className="hint">
-          Firebase Auth・Firestore同期はPhase
-          2で実装します。現在は接続も書き込みも行いません。
+          Googleログインは任意の外部AIの本人確認用です。Firestore同期は未実装で、同期キューの送信やFirestoreへの書き込みは行いません。
         </p>
         <button
           onClick={() =>
@@ -1532,7 +1550,7 @@ function Settings({ storage }: { storage: string }) {
         </p>
         <h3>AI・プライバシー</h3>
         <p className="hint">
-          健康・体調データを外部AIへ送信する機能は未実装です。記録はこのブラウザー内に保存します。有料サービスやApple
+          外部AIへの送信は、Googleログインと送信同意がある場合だけ行います。記録の一次保存はこのブラウザー内です。有料サービスやApple
           Developer Programは不要です。
         </p>
         <h3>Apple Health</h3>
@@ -1540,7 +1558,7 @@ function Settings({ storage }: { storage: string }) {
           ショートカットの睡眠JSONを読み取れます。自動同期とiPhone実機でのショートカット設定は未検証です。ワークアウトを含め、Apple
           Healthへの書き込みは行いません。
         </p>
-        <p className="eyebrow">takin' 2ku · 1.8.0 / ローカル版</p>
+        <p className="eyebrow">takin' 2ku · 1.9.0 / ローカル優先</p>
       </section>
     </>
   );

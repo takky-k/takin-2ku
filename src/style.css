@@ -1275,3 +1275,7 @@ html[data-keyboard-editing="true"] .timer {
 .body-goal progress {
   width: 100%;
 }
+.ai-consent { display:flex; gap:10px; align-items:flex-start; line-height:1.8; }
+.ai-consent input { width:22px; min-width:22px; min-height:22px; margin-top:2px; }
+.ai-connection code { overflow-wrap:anywhere; font-size:11px; }
+.ai-connection button { margin:4px 8px 4px 0; }

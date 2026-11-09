@@ -1,3 +1,14 @@
+# v1.9 認証・同意付き外部AI
+
+- Firebase App/Authのみを追加しFirestoreには接続しない。WorkerはRS256署名/iss/aud/exp/iat/auth_time、Google provider/email_verifiedと許可UIDを確認し、UIDやRate limiter未設定時は拒否。
+- 32KBの入力上限、レート制限、厳密な入出力schema、種目/セットID/固定値/数値上限を検証。未入力RIRはnull、実測0は0のまま送る。体重/自由記述メモ/メールは要約に含めない。
+- 準備操作前は外部通信なし。ログイン・送信同意・オンラインの場合だけ起動時にAIへ問い合わせ。同意解除や入力競合時は適用せず、失敗/オフラインは端末内計算で継続。
+- 架空データだけのAI接続テストを追加。Google認証の実操作は本人へ引き継ぎ、本人UID未登録・実モデル疎通未検証を、モックテスト成功と区別する。
+- 単体90件、E2E13件、本番PWA/Workerビルドを確認。初期化のオフライン後再試行、署名不正/異UID/期限切れ/レート制限/不正AI出力、原子的適用、入力競合、同意撤回、ログイン前のローカル動作を検証。
+- 本番Worker /healthはconfigured=true, ownerConfigured=false, limiterConfigured=trueを確認。Firebase Spark/Google有効/takky-k.github.io登録を確認。初回本人ログインとUID許可、iPhone実機認証、実AI応答は未完了。
+
+以下は以前の版の記録です。
+
 # v1.8 コンディション保存から直接記録
 
 - 保存済みレコードをawait可能なコールバックへ渡し、DB保存→対象メニューの目標計算→記録画面の順で実行。ボタンは準備完了まで無効化し、保存中の連打を拒否。

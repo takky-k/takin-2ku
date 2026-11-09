@@ -5,5 +5,7 @@ Object.defineProperty(globalThis, "crypto", {
   value: webcrypto,
   configurable: true,
 });
-window.scrollTo = () => {};
-Element.prototype.scrollIntoView = () => {};
+if (typeof window !== "undefined") {
+  window.scrollTo = () => {};
+  Element.prototype.scrollIntoView = () => {};
+}

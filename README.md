@@ -1,6 +1,6 @@
 # takin' 2ku
 
-iPhoneの縦画面を中心に使う、日本語の筋トレ管理PWA。**v1.8：コンディション保存後に目標を計算し、選択メニューの記録へ自動遷移**に対応したローカル版です。React / TypeScript strict / Vite / Tailwind CSS / Dexie / Recharts / Zustand / Zodを使用します。必須の有料サービス、Apple Developer Program、LLM API、Firebase設定はありません。
+iPhoneの縦画面を中心に使う、日本語の筋トレ管理PWA。**v1.9：本人認証・送信同意付きのCloudflare Workers AI接続**に対応したローカル版です。React / TypeScript strict / Vite / Tailwind CSS / Dexie / Recharts / Zustand / Zodを使用します。必須の有料サービス、Apple Developer Program、LLM API、Firebase設定はありません。
 
 ## 起動・検証（Windows対応）
 
@@ -17,7 +17,16 @@ npm run test:e2e
 
 開発URLは `http://127.0.0.1:5173/takin-2ku/`、ビルドの確認は `npm run preview` です。Service Workerは本番ビルドで有効になるため、オフライン確認にはpreviewを使います。依存バージョンはpackage-lock.jsonで固定します。
 
-## コンディション保存から記録（v1.8）
+## 外部AI接続（v1.9）
+
+- AIタブ/設定で「AI接続を準備」→Googleログイン→送信同意。接続準備前は外部への問い合わせを行いません。ログイン・同意・オンライン・本人UIDの許可が揃った場合だけ、コンディション保存時にCloudflareへ要約を送ります。
+- AIが選べる重量/回数は、端末内で決めた目標以下、重量減は最大10%、回数減は最大2回。セット数/固定セット/目標RIRは変えません。本人の自動適用指示に基づき、安全確認後、未入力セットへ原子的に適用。競合/失敗/15秒のタイムアウトでは端末内の目標を保持。
+- 送信項目は種目名・重量・回数・実測RIR・実施日間隔・睡眠時間・気分・部位疲労・痛みの有無。体重・自由記述メモ・メール・氏名はAI要約に含めません。Firebase ID tokenは本人確認用にWorkerへ送ります。実測RIRの未入力はnullのままです。
+- 「AI接続をテスト」は認証後に架空データだけで疎通確認し、実記録を変更しません。初回ログイン後、管理者がCloudflareのALLOWED_UIDに本人UIDを設定するまで、AI呼び出しは503で拒否します。
+- 記録のクラウド同期/Firestoreアクセスは未実装のまま。Firebase SparkとGoogle Authだけを使用し、Firestore全拒否ルールは変更しません。
+- Workerの構築・設定・公開手順は [AI接続の運用手順](docs/ai-setup.md) を参照。
+
+## コンディション保存から記録（v1.8・経緯）
 
 - 今日でA/Bと対象部位の疲労を確認して保存すると、Dexieへの保存完了後、選択したメニューのローカル目標を準備し、記録表へ直接遷移します。二重クリックで重複開始しません。
 - 選択や疲労確認が不足した場合は開始せず、保存済みであることと開始できない理由を表示。準備失敗時もコンディションを消しません。トレーニング後の体重保存では画面を移動しません。
@@ -80,7 +89,7 @@ DB名は `takin-2ku` と `takin-2ku-demo`。現在はschema v3。v1の数値RIR�
 
 **個人のCSV実ファイルや実績データはリポジトリ・配信アセットに含めません。** ファイルは端末内で処理し、外部へアップロードしません。PCからiPhoneへのデータ移行には本人がファイルを移して取り込むか、JSONバックアップを利用してください。現時点では端末間の自動同期はありません。
 
-Phase 2用のSyncAdapterとAI provider interfaceを分離しました。Health・予測/実績・説明根拠・体調データの保存先も予約しています。**Firebase SDKを接続せず、Auth・Firestoreへの通信/書き込みは一切行いません。** `firestore.rules` は全拒否のままです。このファイルを自動デプロイする処理もありません。Spark維持、Blaze・カード登録要求なし。
+Phase 2用のSyncAdapterとAI provider interfaceを分離しました。Health・予測/実績・説明根拠・体調データの保存先も予約しています。**Firebase App/Authのみを任意のAI本人確認に使用します。Firestore SDKは導入せず、Firestoreへの通信/書き込みは一切行いません。** `firestore.rules` は全拒否のままです。このファイルを自動デプロイする処理もありません。Spark維持、Blaze・カード登録要求なし。
 
 今後の同期は認証後に `users/{uid}/{collection}/{id}` を使用し、競合解決・バックオフ・UID分離・ルールのEmulatorテストを実装します。現在のキュー件数は「将来同期する変更数」で、クラウドへの同期成功を意味しません。
 
@@ -135,6 +144,6 @@ Vitest 69件、Playwright 10件で保存・移行・自動記録・睡眠4状態
 
 **iPhone実機のSafari・ホーム画面追加・プライベートモード・新旧Service Worker更新の実機確認は別途必要**です。Chromiumでの成功を実機検証済みとは表現しません。
 
-今後の対象：Googleログイン、本人UID制限のFirestore同期・競合選択・Emulatorテスト、代替種目の置換履歴と個人較正、個人予測と誤差評価、無料の安全なプロキシ経由の外部AIチャット、Healthの他項目読み取り・実ショートカット/API接続と実機確認。これらは未実装です。**Apple Healthへのワークアウト書き込み・その他の書き込み機能は作りません。** 健康データを本人の同意なく外部へ送りません。
+今後の対象：本人UID制限のFirestore同期・競合選択・Emulatorテスト、代替種目の置換履歴と個人較正、個人予測と誤差評価、無料の安全なプロキシ経由の外部AIチャット、Healthの他項目読み取り・実ショートカット/API接続と実機確認。これらは未実装です。**Apple Healthへのワークアウト書き込み・その他の書き込み機能は作りません。** 健康データを本人の同意なく外部へ送りません。
 
 `.env*`、秘密鍵、ローカルバックアップ、依存関係、ビルド成果物、ブラウザテスト出力はコミット対象外です。
