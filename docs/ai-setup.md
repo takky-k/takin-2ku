@@ -30,6 +30,10 @@ Firebase AuthenticationのGoogleを有効化し、Authorized domainsにtakky-k.g
 
 同意はブラウザー単位。demo DBは送信しない。同意解除/ログアウト後は送信しない。オフラインではAIに接続せずローカル継続。
 
+睡眠は当日のコンディションで明示的に手入力した値（0時間も含む）を優先する。「未入力に戻す」でショートカットの取得値へ戻る。値がなければnullとし、推測しない。
+
+Gemmaの回答はJSON Schemaで制約し、choices/message/contentと従来のresponse形式を検証する。長い推論を無効化する。失敗ログは固定された処理段階のみで、入力・出力・tokenを含めない。コードのテストと実モデルの本番接続成功は別に確認する。
+
 ## 保護
 
 RS256署名/iss/aud/exp/iat/auth_time、Google provider、email_verified、許可UIDを検証。CORSだけを認証と見なさない。32KBの入力上限、厳密なZod schema、レート制限、出力ID/数値/固定セット検証。プロンプトへ自由記述メモを渡さず、任意URLへのプロキシ化は不可。入力/出力/ID tokenをconsoleやDBへサーバー保存しない。AI Gatewayのログ/キャッシュは使わない。Firebase SDKのID tokenは失効チェックを行わない通常検証で、短命tokenの有効期限まではサーバーで有効になり得る。CloudflareのUID削除で受付停止できる。

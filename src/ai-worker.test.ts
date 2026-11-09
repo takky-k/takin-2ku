@@ -42,7 +42,7 @@ function setup(payload: Record<string, unknown> = {}) {
       firebase: { sign_in_provider: "google.com" },
       ...payload,
     })),
-    run = vi.fn(async (_model: string, _input: unknown) => ({
+    run = vi.fn(async (_model: string, _input: unknown): Promise<unknown> => ({
       response: JSON.stringify(answer()),
     })),
     limit = vi.fn(async () => ({ success: true }));
@@ -122,6 +122,49 @@ it("requires rate limit, keeps RIR zero and null, returns a validated reply with
   t.limit.mockResolvedValueOnce({ success: false });
   expect((await t.worker.fetch(request(), t.env)).status).toBe(429);
   expect(t.run).toHaveBeenCalledTimes(1);
+});
+it("parses Gemma chat completions and disables reasoning to avoid timeouts", async () => {
+  const t = setup();
+  t.run.mockResolvedValueOnce({
+    choices: [{ message: { content: JSON.stringify(answer()) } }],
+  });
+  const r = await t.worker.fetch(request(), t.env);
+  expect(r.status).toBe(200);
+  expect(
+    ((await r.json()) as ReturnType<typeof answer>).recommendations,
+  ).toEqual(answer().recommendations);
+  expect(t.run.mock.calls[0][1]).toMatchObject({
+    max_completion_tokens: 2000,
+    chat_template_kwargs: { enable_thinking: false },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "training_recommendations",
+        strict: true,
+        schema: { type: "object", additionalProperties: false },
+      },
+    },
+  });
+  for (const choices of [
+    [],
+    [{ message: { content: null } }],
+    [{ message: { content: "invalid" } }],
+  ]) {
+    t.run.mockResolvedValueOnce({ choices });
+    expect((await t.worker.fetch(request(), t.env)).status).toBe(502);
+  }
+});
+it("compares RIR bounds by value while preserving zero versus unknown", () => {
+  const reply = structuredClone(answer());
+  reply.recommendations[0].targets[0].targetRir = { max: 2, min: 2 };
+  expect(() => validateAiReply(input, reply)).not.toThrow();
+  const zeroInput = structuredClone(input);
+  zeroInput.exercises[0].targets[0].targetRir = { min: 0, max: 0 };
+  const zeroReply = structuredClone(reply);
+  zeroReply.recommendations[0].targets[0].targetRir = { min: 0, max: 0 };
+  expect(() => validateAiReply(zeroInput, zeroReply)).not.toThrow();
+  zeroReply.recommendations[0].targets[0].targetRir = null;
+  expect(() => validateAiReply(zeroInput, zeroReply)).toThrow();
 });
 it("rejects unsafe, malformed, duplicated and locked-set changes", async () => {
   for (const mutate of [

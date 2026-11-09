@@ -1,7 +1,7 @@
 import { type AppDB, demoDb, meta, save } from "./db";
 import { localDate, type Entities } from "./model";
 import { comparison, sessionDay } from "./training";
-import { sleepHoursForDate } from "./health";
+import { effectiveSleepHours } from "./health";
 import { aiRequestSchema, validateAiReply } from "./ai-contract";
 import { AI_ENDPOINT, hasAiConsent, aiToken, useAI } from "./ai-auth";
 import { decideRecommendation } from "./recommendations";
@@ -27,10 +27,7 @@ export async function buildAIInput(db: AppDB, id: string) {
       .filter((w) => !w.deletedAt && w.dateLocal === day)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const condition = {
-    sleepHours:
-      sleepHoursForDate(d.health, day) ??
-      logs.find((w) => w.sleepHours !== null)?.sleepHours ??
-      null,
+    sleepHours: effectiveSleepHours(d.health, logs, day),
     mood: logs.find((w) => w.mood !== null)?.mood ?? null,
     pain: logs.some((w) => w.painFlag),
     fatigue: Object.fromEntries(
@@ -87,14 +84,12 @@ export async function buildAIInput(db: AppDB, id: string) {
           reps: r.reps,
           targetRir: r.targetRir ?? null,
         })),
-        previous: history.previousSets
-          .slice(0, 20)
-          .map((r) => ({
-            ordinal: r.ordinal,
-            weightKg: r.weightKg,
-            reps: r.reps,
-            rir: r.rir,
-          })),
+        previous: history.previousSets.slice(0, 20).map((r) => ({
+          ordinal: r.ordinal,
+          weightKg: r.weightKg,
+          reps: r.reps,
+          rir: r.rir,
+        })),
       },
     ];
   });

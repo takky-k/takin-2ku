@@ -92,7 +92,8 @@ export function validateAiReply(request: AiRequest, raw: unknown): AiReply {
         t.weightKg < base.weightKg * 0.9 - 0.000001 ||
         t.reps > base.reps ||
         t.reps < Math.max(0, base.reps - 2) ||
-        JSON.stringify(t.targetRir) !== JSON.stringify(base.targetRir)
+        t.targetRir?.min !== base.targetRir?.min ||
+        t.targetRir?.max !== base.targetRir?.max
       )
         throw Error("安全上限を超える提案です");
       if (e.locked && (t.weightKg !== base.weightKg || t.reps !== base.reps))

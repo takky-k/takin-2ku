@@ -9,7 +9,79 @@ import {
 import { AppDB, seed } from "./db";
 import { WellnessForm } from "./WellnessForm";
 import { emptyWellness, saveWellness } from "./wellness";
+import { importHealth } from "./health";
 const opened: AppDB[] = [];
+it("saves, restores and clears manual sleep including zero, half hours and 24 hours", async () => {
+  const db = fresh();
+  const view = render(<WellnessForm database={db} unit="kg" health={[]} />);
+  const slider = screen.getByRole("slider", { name: "睡眠時間" });
+  expect(slider).toHaveAttribute("min", "0");
+  expect(slider).toHaveAttribute("max", "24");
+  expect(slider).toHaveAttribute("step", "0.5");
+  expect(slider).toHaveAttribute("aria-valuetext", "未入力");
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByText("保存しました");
+  expect((await db.wellness.toArray())[0].sleepHours).toBeNull();
+  for (const value of [0, 7.5, 24]) {
+    fireEvent.change(slider, { target: { value: String(value) } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(async () =>
+      expect((await db.wellness.toArray())[0].sleepHours).toBe(value),
+    );
+    expect(slider).toHaveAttribute("aria-valuetext", `${value}時間`);
+  }
+  const saved = (await db.wellness.toArray())[0];
+  view.unmount();
+  render(<WellnessForm database={db} unit="kg" health={[]} existing={saved} />);
+  expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveValue("24");
+  fireEvent.click(
+    screen.getByRole("button", { name: "睡眠時間を未入力に戻す" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(async () =>
+    expect((await db.wellness.get(saved.id))?.sleepHours).toBeNull(),
+  );
+  expect(await db.wellness.count()).toBe(1);
+});
+it("keeps manual sleep ahead of imported sleep until explicitly cleared", async () => {
+  const db = fresh();
+  const date = "2026-01-02";
+  await importHealth(db, {
+    app: "takin-2ku-health",
+    schemaVersion: 1,
+    samples: [
+      {
+        type: "sleep",
+        startAt: "2026-01-01T23:00:00+09:00",
+        endAt: "2026-01-02T06:00:00+09:00",
+        dateLocal: date,
+        stage: "asleep",
+        source: "Synthetic device",
+      },
+    ],
+  });
+  render(
+    <WellnessForm
+      database={db}
+      unit="kg"
+      date={date}
+      health={await db.health.toArray()}
+    />,
+  );
+  fireEvent.change(screen.getByRole("slider", { name: "睡眠時間" }), {
+    target: { value: "0" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await screen.findByText("保存しました");
+  expect((await db.wellness.toArray())[0].sleepHours).toBe(0);
+  fireEvent.click(
+    screen.getByRole("button", { name: "睡眠時間を未入力に戻す" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(async () =>
+    expect((await db.wellness.toArray())[0].sleepHours).toBe(7),
+  );
+});
 function fresh() {
   const db = new AppDB("wellness-" + crypto.randomUUID());
   opened.push(db);
