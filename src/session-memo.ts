@@ -1,6 +1,6 @@
 import { fatigueForMuscle, sorenessForMuscle } from "./wellness";
 import { type Entities, localDate } from "./model";
-import { sleepHoursForDate } from "./health";
+import { effectiveSleepHours } from "./health";
 import { sessionDay } from "./training";
 export function buildSessionMemo(
   session: Entities["sessions"],
@@ -14,10 +14,7 @@ export function buildSessionMemo(
       .filter((w) => !w.deletedAt && w.dateLocal === day)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     notes: string[] = [];
-  const sleep =
-    sleepHoursForDate(health, day) ??
-    logs.find((w) => w.sleepHours !== null)?.sleepHours ??
-    null;
+  const sleep = effectiveSleepHours(health, logs, day);
   notes.push(
     sleep === null
       ? "睡眠データは未取得です。疲労や回復度を補完しません。"

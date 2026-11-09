@@ -1,6 +1,12 @@
 import { it, expect, afterEach } from "vitest";
 import { AppDB } from "./db";
-import { importHealth, parseHealthJson, sleepHoursForDate } from "./health";
+import {
+  importHealth,
+  parseHealthJson,
+  sleepHoursForDate,
+  effectiveSleepHours,
+} from "./health";
+import { emptyWellness } from "./wellness";
 const opened: AppDB[] = [];
 afterEach(async () => {
   for (const d of opened.splice(0)) await d.delete();
@@ -25,6 +31,27 @@ it("imports only validated read-only sleep intervals and deduplicates", async ()
   expect(await importHealth(db, payload)).toEqual({ added: 0, duplicates: 1 });
   expect(sleepHoursForDate(await db.health.toArray(), "2026-01-02")).toBe(7);
   expect(sleepHoursForDate(await db.health.toArray(), "2026-01-03")).toBeNull();
+  const samples = await db.health.toArray();
+  const manual = {
+    ...emptyWellness(null, "2026-01-02"),
+    sleepHours: 0,
+    explicitInputFlags: { sleepHours: true },
+  };
+  expect(effectiveSleepHours(samples, [manual], "2026-01-02")).toBe(0);
+  expect(
+    effectiveSleepHours(
+      samples,
+      [{ ...manual, explicitInputFlags: { sleepHours: false } }],
+      "2026-01-02",
+    ),
+  ).toBe(7);
+  expect(
+    effectiveSleepHours(
+      samples,
+      [{ ...manual, deletedAt: manual.updatedAt }],
+      "2026-01-02",
+    ),
+  ).toBe(7);
 });
 it("merges overlapping sleep stages instead of adding in-bed and awake time", async () => {
   const db = new AppDB("health-" + crypto.randomUUID());

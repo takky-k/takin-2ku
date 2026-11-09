@@ -15,6 +15,8 @@ function Scale({
   value,
   min = 1,
   max = 5,
+  step = 1,
+  unit = "",
   low,
   high,
   onChange,
@@ -23,6 +25,8 @@ function Scale({
   value: number | null;
   min?: number;
   max?: number;
+  step?: number;
+  unit?: string;
   low: string;
   high: string;
   onChange: (n: number | null) => void;
@@ -37,9 +41,9 @@ function Scale({
             type="range"
             min={min}
             max={max}
-            step="1"
+            step={step}
             value={value ?? Math.round((min + max) / 2)}
-            aria-valuetext={value === null ? "未入力" : String(value)}
+            aria-valuetext={value === null ? "未入力" : `${value}${unit}`}
             onChange={(e) => onChange(Number(e.target.value))}
             onPointerUp={(e) => onChange(Number(e.currentTarget.value))}
             onKeyUp={(e) => {
@@ -57,7 +61,9 @@ function Scale({
             }}
           />
         </label>
-        <output aria-live="polite">{value ?? "未入力"}</output>
+        <output aria-live="polite">
+          {value === null ? "未入力" : `${value}${unit}`}
+        </output>
       </div>
       <div className="scale-endpoints">
         <span>
@@ -134,6 +140,7 @@ export function WellnessForm({
   const selectedPlan = plans.find((p) => p.id === draft.plannedPlanId),
     muscles = selectedPlan ? plannedMuscles(selectedPlan, exercises) : [];
   const hours = sleepHoursForDate(health, date);
+  const manualSleep = draft.explicitInputFlags?.sleepHours === true;
   async function commit() {
     if (committing.current) return;
     committing.current = true;
@@ -142,8 +149,19 @@ export function WellnessForm({
       const saved = await saveWellness(database, {
         ...draft,
         ...(!bodyOnly ? { fatigueByMuscle: draft.fatigueByMuscle ?? {} } : {}),
-        sleepHours: hours ?? draft.sleepHours,
-        sleepStatus: hours === null ? "not-acquired" : "available",
+        ...(!bodyOnly
+          ? {
+              sleepHours: manualSleep
+                ? draft.sleepHours
+                : (hours ?? draft.sleepHours),
+              sleepStatus:
+                (manualSleep
+                  ? draft.sleepHours
+                  : (hours ?? draft.sleepHours)) === null
+                  ? ("not-acquired" as const)
+                  : ("available" as const),
+            }
+          : {}),
       });
       setDraft(saved);
       dirty.current = false;
@@ -211,8 +229,30 @@ export function WellnessForm({
               />
             ))}
           </div>
+          <Scale
+            label="睡眠時間"
+            min={0}
+            max={24}
+            step={0.5}
+            unit="時間"
+            value={manualSleep ? draft.sleepHours : null}
+            low="睡眠なし"
+            high="24時間"
+            onChange={(sleepHours) =>
+              change({
+                sleepHours,
+                explicitInputFlags: {
+                  ...draft.explicitInputFlags,
+                  sleepHours: sleepHours !== null,
+                },
+              })
+            }
+          />
+          <p className="hint">
+            0.5時間刻み。手入力した場合は取込データより優先します。未入力に戻すと取込データを使用します。
+          </p>
           <div className="sleep-reading">
-            <span>睡眠</span>
+            <span>ショートカットの睡眠</span>
             <b>{sleepLabel(sleep.status, hours)}</b>
           </div>
           {sleep.updating && (

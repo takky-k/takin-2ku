@@ -6,6 +6,47 @@ const card = (p: Page, key: string) =>
       exact: true,
     }),
   });
+test("manual sleep supports half hours, zero and offline restoration", async ({
+  page,
+  context,
+}) => {
+  await page.goto("./");
+  const slider = page.getByRole("slider", { name: "睡眠時間", exact: true });
+  await expect(slider).toHaveAttribute("aria-valuetext", "未入力");
+  await slider.press("Home");
+  for (let n = 0; n < 15; n++) await slider.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuetext", "7.5時間");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText(
+    "コンディションは保存済みです",
+  );
+  await page.reload();
+  await expect(slider).toHaveValue("7.5");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await context.setOffline(true);
+  await slider.press("Home");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText(
+    "コンディションは保存済みです",
+  );
+  await page.reload();
+  await expect(slider).toHaveAttribute("aria-valuetext", "0時間");
+  await page.screenshot({
+    path: ".npm-cache/sleep-slider.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "睡眠時間を未入力に戻す", exact: true })
+    .click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-status")).toContainText(
+    "コンディションは保存済みです",
+  );
+  await page.reload();
+  await expect(slider).toHaveAttribute("aria-valuetext", "未入力");
+});
 async function saveCondition(page: Page, key: string) {
   await expect(
     page

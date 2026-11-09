@@ -1,7 +1,7 @@
 import { isMuscleFatigued } from "./wellness";
 import { type AppDB, meta, save, revised } from "./db";
 import { type Entities, localDate, kgToDisplay } from "./model";
-import { sleepHoursForDate } from "./health";
+import { effectiveSleepHours } from "./health";
 import { comparison, sessionDay } from "./training";
 export function observedIncrement(rows: Entities["sets"][]) {
   const weights = [
@@ -51,10 +51,11 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       (w) => !w.deletedAt && w.dateLocal === localDate(),
     ),
     pain = wellness.some((w) => w.painFlag);
-  const sleepHours =
-    sleepHoursForDate(snapshot.health, localDate()) ??
-    wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
-    null;
+  const sleepHours = effectiveSleepHours(
+    snapshot.health,
+    wellness,
+    localDate(),
+  );
   const shortSleep = sleepHours !== null && sleepHours < 6;
   const lowMood = wellness.some((w) => w.mood !== null && w.mood <= 2);
   const recommendations: Entities["recommendations"][] = [];
@@ -217,10 +218,11 @@ export async function decideRecommendation(
           wellness = (await db.wellness.toArray()).filter(
             (w) => !w.deletedAt && w.dateLocal === localDate(),
           );
-        const sleepHours =
-          sleepHoursForDate(await db.health.toArray(), localDate()) ??
-          wellness.find((w) => w.sleepHours !== null)?.sleepHours ??
-          null;
+        const sleepHours = effectiveSleepHours(
+          await db.health.toArray(),
+          wellness,
+          localDate(),
+        );
         const history = comparison(
           await db.sessions.toArray(),
           await db.sets.toArray(),

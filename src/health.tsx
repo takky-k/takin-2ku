@@ -186,6 +186,23 @@ export function sleepHoursForDate(
   }
   return (total + end - start) / 3600000;
 }
+export function effectiveSleepHours(
+  samples: Entities["health"][],
+  logs: Entities["wellness"][],
+  date: string,
+): number | null {
+  const current = logs
+    .filter((w) => !w.deletedAt && w.dateLocal === date)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const daily = current.find((w) => w.sessionId === null);
+  if (daily?.explicitInputFlags?.sleepHours && daily.sleepHours !== null)
+    return daily.sleepHours;
+  return (
+    sleepHoursForDate(samples, date) ??
+    current.find((w) => w.sleepHours !== null)?.sleepHours ??
+    null
+  );
+}
 export function SleepImport({
   database,
   compact = false,
