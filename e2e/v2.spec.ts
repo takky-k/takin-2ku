@@ -252,7 +252,7 @@ test("approval changes only this session, template and actual RIR stay intact", 
     .getByRole("link", { name: /を編集/ })
     .getAttribute("href");
   await startA(page);
-  await expect(page.getByRole("table")).toHaveCount(5);
+  await expect(page.getByRole("table")).toHaveCount(4);
   await expect(
     page.getByRole("heading", { name: "今日の目標を確認", exact: true }),
   ).toHaveCount(0);

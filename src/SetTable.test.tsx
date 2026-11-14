@@ -24,6 +24,47 @@ async function setup() {
     row = (await db.sets.where("sessionId").equals(id).toArray())[0];
   return { db, id, row };
 }
+it("shows 10 reps at RIR0 as 8 reps at RIR2 without changing actuals or today's targets", async () => {
+  const { db, row } = await setup();
+  const previous = {
+    ...row,
+    id: "previous",
+    reps: 10,
+    rir: { min: 0, max: 0 },
+  };
+  const before = JSON.stringify(previous);
+  const view = render(
+    <SetTable database={db} rows={[row]} previous={[previous]} unit="lb" />,
+  );
+  const cell = view.container.querySelector(".previous-cell")!;
+  expect(cell).toHaveTextContent("8回");
+  expect(cell).toHaveTextContent("RIR2換算");
+  expect(cell).toHaveAttribute("title", "実績：10回 / RIR 0");
+  expect(screen.getByLabelText("セット1の回数")).toHaveAttribute(
+    "placeholder",
+    String(row.defaultReps ?? row.reps),
+  );
+  expect(JSON.stringify(previous)).toBe(before);
+  view.rerender(
+    <SetTable
+      database={db}
+      rows={[row]}
+      previous={[{ ...previous, rir: null }]}
+      unit="lb"
+    />,
+  );
+  expect(cell).toHaveTextContent("10回");
+  expect(cell).not.toHaveTextContent("RIR2換算");
+  view.rerender(
+    <SetTable
+      database={db}
+      rows={[row]}
+      previous={[{ ...previous, rir: { min: 1.5, max: 3 } }]}
+      unit="lb"
+    />,
+  );
+  expect(cell).toHaveTextContent("9回");
+});
 it("keeps raw partial RIR across mounting/reload and rejects finishing invalid persisted fields", async () => {
   const { db, id, row } = await setup(),
     fields = {

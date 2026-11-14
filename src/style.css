@@ -1188,6 +1188,9 @@ html[data-keyboard-editing="true"] .timer {
   display: block;
   white-space: nowrap;
 }
+.previous-cell .rir-reference-label {
+  font-size: 8px;
+}
 .compact-sheet th {
   font-size: 10px;
 }
@@ -1203,6 +1206,53 @@ html[data-keyboard-editing="true"] .timer {
   gap: 8px;
   align-items: stretch;
   margin-top: 12px;
+}
+.set-entry-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.workout-finish-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.workout-finish-actions button {
+  min-width: 0;
+  font-size: 13px;
+  padding: 8px;
+}
+.set-entry-actions > .set-notes {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.set-entry-actions > .exercise-actions {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+.set-entry-actions:has(.set-notes[open]) > .exercise-actions {
+  display: none;
+}
+.exercise-card .section-heading {
+  margin-bottom: 0;
+}
+.exercise-card h2 {
+  margin-bottom: 0;
+}
+.exercise-card .evergreen-notes {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  margin: 2px 0;
+}
+.exercise-card .evergreen-notes > summary {
+  padding: 4px 0;
+  min-height: 36px;
+}
+.exercise-card .compact-sheet {
+  margin: 4px 0;
 }
 .exercise-actions button {
   height: 40px;
@@ -1234,6 +1284,17 @@ html[data-keyboard-editing="true"] .timer {
   min-height: 48px;
 }
 /* Keep seven-character RIR ranges visible without triggering iOS input zoom. */
+.set-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.set-table-scroll .compact-sheet {
+  min-width: 294px;
+}
+.compact-sheet .weight-column {
+  width: 72px;
+}
 .compact-sheet .set-column {
   width: 22px;
 }

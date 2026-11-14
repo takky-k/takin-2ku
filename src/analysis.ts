@@ -39,7 +39,12 @@ export function weeklySummary(
     }
     for (const m of seen) muscles[m].frequency++;
   }
-  return { sessions: eligible.length, muscles };
+  return {
+    sessions: eligible.length,
+    muscles,
+    startDay: localDate(start),
+    endDay: localDate(now),
+  };
 }
 export function suggest(
   weight: number,

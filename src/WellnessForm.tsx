@@ -4,6 +4,7 @@ import { type Entities, round, localDate } from "./model";
 import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
 import { sleepLabel, useSleepState } from "./sleep-sync";
+import { readBodyWeightDraft, stageBodyWeight } from "./body-weight-draft";
 function Scale({
   label,
   value,
@@ -87,6 +88,7 @@ export function WellnessForm({
   health,
   date = localDate(),
   bodyOnly = false,
+  deferBodySave = false,
   plans = [],
   exercises = [],
   requestedPlanId,
@@ -99,17 +101,31 @@ export function WellnessForm({
   health: Entities["health"][];
   date?: string;
   bodyOnly?: boolean;
+  deferBodySave?: boolean;
   plans?: Entities["plans"][];
   exercises?: Entities["exercises"][];
   requestedPlanId?: string;
   onSaved?: (saved: Entities["wellness"]) => void | Promise<void>;
 }) {
-  const [draft, setDraft] = useState(
-      () => existing ?? emptyWellness(sessionId, date),
-    ),
+  const [draft, setDraft] = useState(() => {
+      const base = existing ?? emptyWellness(sessionId, date);
+      const raw =
+        deferBodySave && sessionId
+          ? readBodyWeightDraft(database, sessionId)
+          : null;
+      return raw === null
+        ? base
+        : { ...base, bodyWeightKg: raw.trim() ? Number(raw) : null };
+    }),
     [saving, setSaving] = useState(false),
     [message, setMessage] = useState("");
-  const dirty = useRef(false),
+  const dirty = useRef(
+      !!(
+        deferBodySave &&
+        sessionId &&
+        readBodyWeightDraft(database, sessionId) !== null
+      ),
+    ),
     committing = useRef(false);
   const sleep = useSleepState();
   useEffect(() => {
@@ -273,12 +289,14 @@ export function WellnessForm({
             min="1"
             step="any"
             value={draft.bodyWeightKg === null ? "" : round(draft.bodyWeightKg)}
-            onChange={(e) =>
+            onChange={(e) => {
+              if (deferBodySave && sessionId)
+                stageBodyWeight(database, sessionId, e.target.value);
               change({
                 bodyWeightKg: e.target.value ? Number(e.target.value) : null,
                 bodyWeightUnitVersion: 1,
-              })
-            }
+              });
+            }}
           />
         </label>
       )}
@@ -291,14 +309,20 @@ export function WellnessForm({
           />
         </label>
       )}
-      <button
-        type="button"
-        className="primary full"
-        disabled={saving}
-        onClick={() => void commit()}
-      >
-        {saving ? "保存中…" : "保存"}
-      </button>
+      {deferBodySave ? (
+        <p className="hint">
+          入力した体重はトレーニングの完了時に一緒に保存します。
+        </p>
+      ) : (
+        <button
+          type="button"
+          className="primary full"
+          disabled={saving}
+          onClick={() => void commit()}
+        >
+          {saving ? "保存中…" : "保存"}
+        </button>
+      )}
       <p role="status" className="save-status">
         {message}
       </p>

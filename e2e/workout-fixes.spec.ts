@@ -58,13 +58,17 @@ test("kg body weight, collapsed picker, red expiry flash and navigation survive 
   await page.clock.fastForward(31000);
   await expect(flash).toHaveCount(0);
   await page.getByLabel("体重 (kg)", { exact: true }).fill("70");
-  await weight.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByRole("navigation")).toBeVisible();
+  await expect(
+    weight.getByRole("button", { name: "保存", exact: true }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("体重 (kg)", { exact: true })).toHaveValue("70");
   await page
     .getByRole("button", { name: "トレーニングを終了", exact: true })
     .click();
   await page.getByRole("button", { name: "完了を確定", exact: true }).click();
   await expect(page.locator(".exercise-card")).toHaveCount(0);
+  await expect(page.getByLabel("体重 (kg)", { exact: true })).toHaveValue("70");
   await expect(page.getByRole("navigation")).toBeVisible();
   for (const name of ["分析", "記録", "AI", "今日"]) {
     await page
@@ -93,6 +97,22 @@ test("old records, high-rep results and foreground refresh remain visible in ana
   await page.goto("./");
   await start(page);
   await page
+    .locator(".exercise-card")
+    .first()
+    .getByLabel("セット1の回数", { exact: true })
+    .fill("15");
+  await page
+    .locator(".exercise-card")
+    .first()
+    .getByLabel("セット2の回数", { exact: true })
+    .fill("15");
+  await page
+    .locator(".exercise-card")
+    .first()
+    .getByLabel("セット3の回数", { exact: true })
+    .fill("15");
+
+  await page
     .getByRole("button", { name: "トレーニングを終了", exact: true })
     .click();
   await page.getByRole("button", { name: "完了を確定", exact: true }).click();
@@ -107,7 +127,7 @@ test("old records, high-rep results and foreground refresh remain visible in ana
   ).toBeVisible();
   await page
     .getByRole("combobox", { name: "種目・器具", exact: true })
-    .selectOption({ label: "ダンベルシュラッグ / ダンベル" });
+    .selectOption({ label: "ラットプルダウン / ラットプルダウン" });
   await expect(
     page.getByRole("status").filter({ hasText: "記録は保存されています" }),
   ).toBeVisible();
@@ -160,5 +180,5 @@ test("old records, high-rep results and foreground refresh remain visible in ana
     .getByRole("link", { name: "保存したトレーニング記録を確認" })
     .click();
   await expect(page.locator(".history-link")).toHaveCount(1);
-  await expect(page.locator(".history-link")).toContainText("13セット完了");
+  await expect(page.locator(".history-link")).toContainText("12セット完了");
 });

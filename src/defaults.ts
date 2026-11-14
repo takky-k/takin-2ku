@@ -50,19 +50,6 @@ export const catalog = [
       "基本RIR2、最終セットのみRIR0〜1可。休憩2分。戻し3秒、肘固定。椅子の高さ9、胸当ては最短。",
   },
   {
-    key: "shrug",
-    name: "ダンベルシュラッグ",
-    muscle: "僧帽筋",
-    equipment: "ダンベル",
-    category: "isolation",
-    rest: 120,
-    weights: [30],
-    reps: [15],
-    locked: true,
-    notes:
-      "通常30lb×15回で固定。本人が変更するまで自動増量しない。休憩2分。肩を真上にすくめ、トップで1秒、戻し2〜3秒。",
-  },
-  {
     key: "chest",
     name: "新チェストプレスマシン",
     muscle: "胸",

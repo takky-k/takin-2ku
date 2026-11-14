@@ -1,6 +1,7 @@
 import { type AppDB, meta, save } from "./db";
 import { catalog, planNotes } from "./defaults";
 import { displayToKg, type Entities } from "./model";
+import { removeRetiredDefaultExercises } from "./menu-cleanup";
 export async function installDefaultPlans(db: AppDB) {
   await db.transaction("rw", [db.exercises, db.plans, db.queue], async () => {
     // Installing v2.1 is additive: never replace a user's existing menus or records.
@@ -9,8 +10,8 @@ export async function installDefaultPlans(db: AppDB) {
       if (plans.some((p) => p.catalogKey === key)) continue;
       const targets: Entities["plans"]["exercises"] = [];
       for (const entry of catalog.slice(
-        key === "A" ? 0 : 5,
-        key === "A" ? 5 : 10,
+        key === "A" ? 0 : 4,
+        key === "A" ? 4 : 9,
       )) {
         const existing = (await db.exercises.toArray()).find(
           (e) =>
@@ -31,7 +32,7 @@ export async function installDefaultPlans(db: AppDB) {
           formVideoUrls: "videos" in entry ? [...entry.videos] : [],
           category: entry.category,
           defaultRestSeconds: entry.rest,
-          autoProgression: !("locked" in entry && entry.locked),
+          autoProgression: true,
         };
         if (!existing) await save(db, "exercises", e);
         const plannedSets = entry.weights.map((weight, i) => ({
@@ -42,7 +43,7 @@ export async function installDefaultPlans(db: AppDB) {
           reps: entry.reps[i],
           targetRir: { min: 2, max: 2 },
           setType: "normal" as const,
-          isLocked: "locked" in entry && entry.locked,
+          isLocked: false,
         }));
         targets.push({
           exerciseId: e.id,
@@ -66,9 +67,13 @@ export async function installDefaultPlans(db: AppDB) {
       });
     }
   });
+  await removeRetiredDefaultExercises(db);
 }
 export async function seed(db: AppDB, demo = false) {
-  if (await db.profiles.count()) return;
+  if (await db.profiles.count()) {
+    await removeRetiredDefaultExercises(db);
+    return;
+  }
   await db.transaction(
     "rw",
     [

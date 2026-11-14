@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 test("compact numeric widths and default overall analysis with persisted body goal", async ({
   page,
   context,
-}) => {
+}, testInfo) => {
   await page.goto("./");
   await page
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
@@ -21,7 +21,7 @@ test("compact numeric widths and default overall analysis with persisted body go
   await weight.fill("125");
   await reps.fill("12");
   await rir.fill("1.5~2.5");
-  for (const width of [375, 390, 430, 1280]) {
+  for (const width of [320, 360, 375, 390, 430, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     expect(
       await page.evaluate(
@@ -46,9 +46,13 @@ test("compact numeric widths and default overall analysis with persisted body go
     }
   }
   await rir.blur();
+  await page.setViewportSize({ width: 375, height: 844 });
+  await weight.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("iphone-125lb.png") });
   await page.getByLabel("体重 (kg)", { exact: true }).fill("160");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".post-workout-weight").getByRole("button"),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "トレーニングを終了", exact: true })
     .click();
