@@ -75,7 +75,10 @@ it("uses imported sleep as evidence and rechecks short sleep at approval without
 });
 it("seeds exact A/B planned sets, no real history or legs, defaults to lb and four days", async () => {
   const { d, p } = await setup();
-  expect(p.exercises.reduce((n, e) => n + e.targetSets, 0)).toBe(13);
+  expect(p.exercises.reduce((n, e) => n + e.targetSets, 0)).toBe(12);
+  expect(
+    (await d.exercises.toArray()).some((e) => e.name === "ダンベルシュラッグ"),
+  ).toBe(false);
   const b = (await d.plans.toArray()).find((p) => p.catalogKey === "B")!;
   expect(b.exercises.reduce((n, e) => n + e.targetSets, 0)).toBe(12);
   expect(
@@ -134,7 +137,7 @@ it("starts atomically with null actual RIR and separate target RIR and rest", as
   expect(ids[0]).toBe(ids[1]);
   expect(await d.sessions.count()).toBe(1);
   const sets = await d.sets.toArray();
-  expect(sets).toHaveLength(13);
+  expect(sets).toHaveLength(12);
   expect(sets.every((s) => s.rir === null && s.targetRir?.min === 2)).toBe(
     true,
   );
@@ -244,7 +247,7 @@ it("does not finalize an incomplete range input, and finishing twice keeps the o
   await finishWorkout(d, id);
   expect((await d.sessions.get(id))?.endedAt).toBe(ended);
 });
-it("rechecks new pain before approval, preserves null wellness, and keeps fixed shrug locked", async () => {
+it("rechecks new pain before approval, preserves null wellness, and keeps manually locked targets fixed", async () => {
   const { d, p } = await setup();
   const previous = await startWorkout(d, p, "lb");
   for (const row of await d.sets.where("sessionId").equals(previous).toArray())
@@ -258,6 +261,9 @@ it("rechecks new pain before approval, preserves null wellness, and keeps fixed 
       }),
     );
   await finishWorkout(d, previous);
+  p.exercises[1].plannedSets!.forEach((s) => {
+    s.isLocked = true;
+  });
   const id = await startWorkout(d, p, "lb"),
     recommendations = await generateRecommendations(d, id);
   const r = recommendations.find(
@@ -265,10 +271,12 @@ it("rechecks new pain before approval, preserves null wellness, and keeps fixed 
   )!;
   const original = (await d.sets.get(r.proposedTargets![0].setId))!;
   expect(r.proposedTargets![0].reps).toBe(original.reps + 1);
-  const shrug = recommendations.find(
-    (r) => r.exerciseId === p.exercises[4].exerciseId,
+  const locked = recommendations.find(
+    (r) => r.exerciseId === p.exercises[1].exerciseId,
   )!;
-  expect(shrug.proposedTargets![0].reps).toBe(15);
+  expect(locked.proposedTargets![0].reps).toBe(
+    p.exercises[1].plannedSets![0].reps,
+  );
   await save(d, "wellness", {
     ...meta(),
     sessionId: null,

@@ -1,5 +1,5 @@
 import { resolvedReps } from "./set-values";
-import { Fragment, useEffect, useState, useRef } from "react";
+import { Fragment, useEffect, useState, useRef, type ReactNode } from "react";
 import { type AppDB, remove } from "./db";
 import {
   type WorkoutSet,
@@ -16,71 +16,83 @@ export function SetTable({
   rows,
   previous,
   unit,
+  actions,
 }: {
   database: AppDB;
   rows: WorkoutSet[];
   previous: WorkoutSet[];
   unit: "kg" | "lb";
+  actions?: ReactNode;
 }) {
   return (
     <>
-      <table className="workout-table compact-sheet">
-        <caption className="sr-only">セットの直接入力</caption>
-        <colgroup>
-          <col className="set-column" />
-          <col className="previous-column" />
-          <col className="weight-column" />
-          <col className="reps-column" />
-          <col className="rir-column" />
-          <col className="delete-column" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th scope="col">SET</th>
-            <th scope="col">前回</th>
-            <th scope="col">重量 ({unit})</th>
-            <th scope="col">REPS</th>
-            <th scope="col">RIR</th>
-            <th scope="col">
-              <span className="sr-only">最終行の削除</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <SetRow
-              key={row.id + "-" + unit}
-              database={database}
-              row={row}
-              previous={previous[index]}
-              index={index}
-              unit={unit}
-              last={index === rows.length - 1}
-            />
-          ))}
-        </tbody>
-      </table>
-      <details className="set-notes">
-        <summary>メモ</summary>
-        <table>
+      <div
+        className="set-table-scroll"
+        role="region"
+        aria-label="セット入力表"
+        tabIndex={0}
+      >
+        <table className="workout-table compact-sheet">
+          <caption className="sr-only">セットの直接入力</caption>
+          <colgroup>
+            <col className="set-column" />
+            <col className="previous-column" />
+            <col className="weight-column" />
+            <col className="reps-column" />
+            <col className="rir-column" />
+            <col className="delete-column" />
+          </colgroup>
           <thead>
             <tr>
-              <th>SET</th>
-              <th>メモ</th>
+              <th scope="col">SET</th>
+              <th scope="col">前回</th>
+              <th scope="col">重量 ({unit})</th>
+              <th scope="col">REPS</th>
+              <th scope="col">RIR</th>
+              <th scope="col">
+                <span className="sr-only">最終行の削除</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={row.id}>
-                <th>{index + 1}</th>
-                <td>
-                  <SetNote database={database} row={row} index={index} />
-                </td>
-              </tr>
+              <SetRow
+                key={row.id + "-" + unit}
+                database={database}
+                row={row}
+                previous={previous[index]}
+                index={index}
+                unit={unit}
+                last={index === rows.length - 1}
+              />
             ))}
           </tbody>
         </table>
-      </details>
+      </div>
+      <div className="set-entry-actions">
+        <details className="set-notes">
+          <summary>メモ</summary>
+          <table>
+            <thead>
+              <tr>
+                <th>SET</th>
+                <th>メモ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.id}>
+                  <th>{index + 1}</th>
+                  <td>
+                    <SetNote database={database} row={row} index={index} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+        {actions && <div className="exercise-actions">{actions}</div>}
+      </div>
     </>
   );
 }
@@ -309,6 +321,9 @@ function SetRow({
     }
   }
   const reference = previous ?? row.referencePrevious;
+  const referenceReps = reference?.rir
+    ? Math.max(0, Math.floor(reference.reps + reference.rir.min - 2))
+    : reference?.reps;
   return (
     <Fragment>
       <tr className={row.completedAt ? "recorded-set" : ""}>
@@ -318,14 +333,24 @@ function SetRow({
             {row.completedAt ? "入力済み" : "未入力"}
           </span>
         </th>
-        <td className="previous-cell">
+        <td
+          className="previous-cell"
+          title={
+            reference
+              ? `実績：${reference.reps}回 / RIR ${formatRir(reference.rir)}`
+              : undefined
+          }
+        >
           {reference ? (
             <>
               <span>
                 {round(kgToDisplay(reference.weightKg, unit))}
                 {unit}
               </span>
-              <span>× {reference.reps}回</span>
+              <span>× {referenceReps}回</span>
+              {reference.rir && (
+                <span className="rir-reference-label">RIR2換算</span>
+              )}
             </>
           ) : (
             "—"

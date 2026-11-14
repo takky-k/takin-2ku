@@ -1,5 +1,9 @@
 import { validatedSet } from "./set-values";
-import { type AppDB, meta, save, revised } from "./db";
+import {
+  commitBodyWeightDraft,
+  clearBodyWeightDraft,
+} from "./body-weight-draft";
+import { type AppDB, meta, save, revised, deleteSession } from "./db";
 import {
   type Entities,
   type PlannedSet,
@@ -9,6 +13,50 @@ import {
 
 import { restorePendingSetInputs } from "./set-inputs";
 import { remove } from "./db";
+export async function discardWorkout(db: AppDB, id: string) {
+  const rows = await db.transaction(
+    "rw",
+    [db.sessions, db.sets, db.wellness, db.recommendations, db.queue],
+    async () => {
+      const session = await db.sessions.get(id);
+      if (!session || session.deletedAt) return [];
+      if (session.status === "finished")
+        throw Error("完了済みの記録は履歴から削除してください。");
+      const rows = await db.sets.where("sessionId").equals(id).toArray();
+      await deleteSession(db, id);
+      for (const rec of await db.recommendations
+        .filter((r) => r.sessionId === id && !r.deletedAt)
+        .toArray())
+        await remove(db, "recommendations", rec);
+      for (const log of await db.wellness
+        .where("dateLocal")
+        .equals(localDate())
+        .filter(
+          (w) =>
+            !w.deletedAt &&
+            w.sessionId === null &&
+            w.plannedPlanId === session.planId,
+        )
+        .toArray())
+        await save(db, "wellness", revised({ ...log, plannedPlanId: null }));
+      return rows;
+    },
+  );
+  clearBodyWeightDraft(db, id);
+  try {
+    localStorage.removeItem("takin-rest-" + id);
+    for (const row of rows)
+      for (const key of [
+        `takin-pending-set:${db.name}:${row.id}`,
+        `takin-sheet-draft-${db.name}-${row.id}`,
+        `takin-table-draft-${db.name}-${row.id}-kg`,
+        `takin-table-draft-${db.name}-${row.id}-lb`,
+      ])
+        localStorage.removeItem(key);
+  } catch {
+    /* Deleted rows cannot be restored by the pending-input journal. */
+  }
+}
 export async function skipExerciseToday(
   db: AppDB,
   sessionId: string,
@@ -147,7 +195,12 @@ export async function startWorkout(
   );
 }
 export const sessionDay = (s: Entities["sessions"]) =>
-  s.performedDateLocal ?? localDate(new Date(s.startedAt));
+  // A resumed workout can have been started in a previous week. Native
+  // workouts belong to their completion day; date-only imports keep their
+  // explicitly supplied performance date.
+  s.status === "finished" && s.endedAt && s.timePrecision !== "date"
+    ? localDate(new Date(s.endedAt))
+    : (s.performedDateLocal ?? localDate(new Date(s.startedAt)));
 export function comparison(
   sessions: Entities["sessions"][],
   sets: Entities["sets"][],
@@ -225,40 +278,46 @@ export async function finishWorkout(db: AppDB, id: string) {
       }
   }
   await restorePendingSetInputs(db, new Set(rows.map((r) => r.id)));
-  await db.transaction("rw", [db.sessions, db.sets, db.queue], async () => {
-    const session = await db.sessions.get(id);
-    if (!session || session.deletedAt) throw Error("セッションがありません");
-    if (session.status === "finished") return;
-    const current = await db.sets
-      .where("sessionId")
-      .equals(id)
-      .filter(
-        (r) =>
-          !r.deletedAt &&
-          session.exercises.some((e) => e.exerciseId === r.exerciseId),
-      )
-      .toArray();
-    if (!current.length) throw Error("保存するセットがありません");
-    const stamp = new Date().toISOString();
-    for (const row of current) {
-      try {
-        const valid = validatedSet(row);
-        if (row.completedAt) continue;
-        await save(
-          db,
-          "sets",
-          revised({ ...valid, completedAt: row.completedAt ?? stamp }),
-        );
-      } catch {
-        throw Error(
-          `セット${row.ordinal + 1}に入力途中または不正な値があります。入力を確認してください`,
-        );
+  await db.transaction(
+    "rw",
+    [db.sessions, db.sets, db.wellness, db.queue],
+    async () => {
+      const session = await db.sessions.get(id);
+      if (!session || session.deletedAt) throw Error("セッションがありません");
+      if (session.status === "finished") return;
+      const current = await db.sets
+        .where("sessionId")
+        .equals(id)
+        .filter(
+          (r) =>
+            !r.deletedAt &&
+            session.exercises.some((e) => e.exerciseId === r.exerciseId),
+        )
+        .toArray();
+      if (!current.length) throw Error("保存するセットがありません");
+      const stamp = new Date().toISOString();
+      for (const row of current) {
+        try {
+          const valid = validatedSet(row);
+          if (row.completedAt) continue;
+          await save(
+            db,
+            "sets",
+            revised({ ...valid, completedAt: row.completedAt ?? stamp }),
+          );
+        } catch {
+          throw Error(
+            `セット${row.ordinal + 1}に入力途中または不正な値があります。入力を確認してください`,
+          );
+        }
       }
-    }
-    await save(
-      db,
-      "sessions",
-      revised({ ...session, status: "finished", endedAt: stamp }),
-    );
-  });
+      await commitBodyWeightDraft(db, id, localDate(new Date(stamp)));
+      await save(
+        db,
+        "sessions",
+        revised({ ...session, status: "finished", endedAt: stamp }),
+      );
+    },
+  );
+  clearBodyWeightDraft(db, id);
 }

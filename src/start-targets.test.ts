@@ -145,7 +145,7 @@ it("deduplicates simultaneous starts", async () => {
   ]);
   expect(ids[0]).toBe(ids[1]);
   expect(await db.sessions.count()).toBe(1);
-  expect(await db.recommendations.count()).toBe(5);
+  expect(await db.recommendations.count()).toBe(4);
 });
 it("automatically applies refreshed safe targets and never changes already recorded sets", async () => {
   const { db, a } = await setup();

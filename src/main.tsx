@@ -61,7 +61,12 @@ import "./style.css";
 import { PlanEditor } from "./PlanEditor";
 import { CsvImport } from "./CsvImport";
 import { installDefaultPlans } from "./db";
-import { sessionDay, finishWorkout, skipExerciseToday } from "./training";
+import {
+  sessionDay,
+  finishWorkout,
+  skipExerciseToday,
+  discardWorkout,
+} from "./training";
 import { AdvicePanel } from "./AdvicePanel";
 import { AIConnection } from "./AIConnection";
 import { applyOnlineAdvice } from "./online-advice";
@@ -419,7 +424,17 @@ function MyMenus() {
     </>
   );
 }
-function WeeklyTraining({ count, target }: { count: number; target: number }) {
+function WeeklyTraining({
+  count,
+  target,
+  startDay,
+  endDay,
+}: {
+  count: number;
+  target: number;
+  startDay: string;
+  endDay: string;
+}) {
   return (
     <section className="hero" aria-label="今週のトレーニング">
       <div className="hero-top">
@@ -431,6 +446,9 @@ function WeeklyTraining({ count, target }: { count: number; target: number }) {
         <small> / {target} 回</small>
       </div>
       <progress max={target} value={count} />
+      <p className="hint">
+        {startDay}〜{endDay} · 完了したトレーニングのみ
+      </p>
     </section>
   );
 }
@@ -492,7 +510,11 @@ function previousSets(
             !x.deletedAt,
         ),
     )
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    .sort(
+      (a, b) =>
+        sessionDay(b).localeCompare(sessionDay(a)) ||
+        b.startedAt.localeCompare(a.startedAt),
+    )[0];
   return s
     ? sets
         .filter(
@@ -508,11 +530,16 @@ function previousSets(
 }
 function Workout() {
   const { data, database } = useData();
+  const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const picker = useLocation().pathname === "/workout";
   const s = data?.sessions.find((s) => s.status === "active");
   useEffect(() => {
-    if (!s) setFinishing(false);
+    if (!s) {
+      setFinishing(false);
+      setCompleting(false);
+    }
   }, [s?.id]);
   const latestFinished = data?.sessions
     .filter((s) => s.status === "finished")
@@ -523,7 +550,6 @@ function Workout() {
     )[0];
   return (
     <>
-      <Title eyebrow="TRAINING" title="トレーニング" />
       {picker ? (
         <MyMenus />
       ) : s?.requiresTargetReview ? (
@@ -537,12 +563,43 @@ function Workout() {
         </section>
       ) : s ? (
         <>
-          <SessionEditor session={s} />
+          <div inert={completing}>
+            <SessionEditor session={s} showFooter={false} />
+          </div>
           <section className="card">
             <h2>今回のトレーニングを終了</h2>
-            <button className="primary full" onClick={() => setFinishing(true)}>
-              トレーニングを終了
-            </button>
+            <div className="workout-finish-actions">
+              <button
+                className="primary"
+                disabled={completing}
+                onClick={() => setFinishing(true)}
+              >
+                トレーニングを終了
+              </button>
+              <button
+                className="danger"
+                disabled={completing}
+                onClick={() => {
+                  if (
+                    confirm(
+                      "今回のトレーニングと入力途中の記録を削除し、今日のメニュー選択を解除しますか？",
+                    )
+                  )
+                    run(async () => {
+                      setCompleting(true);
+                      try {
+                        await discardWorkout(database, s.id);
+                        navigate("/");
+                      } catch (e) {
+                        setCompleting(false);
+                        throw e;
+                      }
+                    });
+                }}
+              >
+                このトレーニングを消す
+              </button>
+            </div>
             {finishing && (
               <div
                 role="dialog"
@@ -558,12 +615,21 @@ function Workout() {
                 <div className="actions">
                   <button
                     className="primary"
-                    disabled={!data!.sets.some((r) => r.sessionId === s.id)}
+                    disabled={
+                      completing ||
+                      !data!.sets.some((r) => r.sessionId === s.id)
+                    }
                     onClick={() =>
                       run(async () => {
                         if (document.activeElement instanceof HTMLElement)
                           document.activeElement.blur();
-                        await finishWorkout(database, s.id);
+                        setCompleting(true);
+                        try {
+                          await finishWorkout(database, s.id);
+                        } catch (e) {
+                          setCompleting(false);
+                          throw e;
+                        }
                         // Keep the dialog until the live query renders the
                         // finished session. Otherwise iOS can accept a weight
                         // edit on the old form immediately before it unmounts.
@@ -579,6 +645,9 @@ function Workout() {
               </div>
             )}
           </section>
+          <div inert={completing}>
+            <SessionFooter session={s} />
+          </div>
         </>
       ) : (
         <MyMenus />
@@ -599,41 +668,14 @@ function Workout() {
     </>
   );
 }
-function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
+function SessionEditor({
+  session: s,
+  showFooter = true,
+}: {
+  session: Entities["sessions"];
+  showFooter?: boolean;
+}) {
   const { data, database } = useData();
-  const lastDeleted = useLiveQuery(
-    async () =>
-      (await database.sets.where("sessionId").equals(s.id).toArray())
-        .filter(
-          (r) =>
-            r.deletedAt &&
-            s.exercises.some((e) => e.exerciseId === r.exerciseId),
-        )
-        .sort((a, b) =>
-          (b.deletedAt ?? "").localeCompare(a.deletedAt ?? ""),
-        )[0],
-    [database, s.id, s.revision],
-  );
-  const [until, setUntil] = useState(
-      () => Number(localStorage.getItem("takin-rest-" + s.id)) || 0,
-    ),
-    [now, setNow] = useState(Date.now());
-  const [flash, setFlash] = useState(false);
-  useEffect(() => {
-    if (!until || until > now) return;
-    localStorage.removeItem("takin-rest-" + s.id);
-    setUntil(0);
-    setFlash(true);
-  }, [until, now, s.id]);
-  useEffect(() => {
-    if (!flash) return;
-    const id = setTimeout(() => setFlash(false), 650);
-    return () => clearTimeout(id);
-  }, [flash]);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, []);
   if (!data?.profile) return null;
   const unit = data.profile.units;
   async function addSet(exerciseId: string) {
@@ -672,12 +714,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
         120,
     });
   }
-  const timer = (seconds: number) => {
-    const end = seconds > 0 ? Date.now() + seconds * 1000 : 0;
-    setFlash(false);
-    localStorage.setItem("takin-rest-" + s.id, String(end));
-    setUntil(end);
-  };
   return (
     <>
       <section className="session-heading">
@@ -698,11 +734,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           記録から作成するローカル分析 · 外部送信なし
         </small>
       </details>
-      <p className="hint">
-        RIR =
-        あと何回挙げられたか。0は限界、空欄は未入力。範囲（1〜2）・0.5刻みに対応。
-      </p>
-      {s.exercises.map((e, i) => {
+      {s.exercises.map((e) => {
         const rows = data.sets
             .filter(
               (r) => r.sessionId === s.id && r.exerciseId === e.exerciseId,
@@ -735,9 +767,6 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           <section className="card exercise-card" key={e.exerciseId}>
             <div className="section-heading">
               <div>
-                <span className="eyebrow">
-                  {String(i + 1).padStart(2, "0")} / {e.muscle}
-                </span>
                 <h2>{e.name}</h2>
                 {e.equipmentId && e.equipmentId.trim() !== e.name.trim() && (
                   <small className="muted">{e.equipmentId}</small>
@@ -778,27 +807,31 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
               rows={rows}
               previous={prev}
               unit={unit}
+              actions={
+                <>
+                  <button onClick={() => run(() => addSet(e.exerciseId))}>
+                    <Plus size={18} />
+                    セットを追加
+                  </button>
+                  <button
+                    aria-label={`${e.name}を今回だけ見送る`}
+                    title="マイメニューには残します"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          "今回のトレーニングだけ見送ります。マイメニューと種目一覧には残します。",
+                        )
+                      )
+                        run(() =>
+                          skipExerciseToday(database, s.id, e.exerciseId),
+                        );
+                    }}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </>
+              }
             />
-            <div className="exercise-actions">
-              <button onClick={() => run(() => addSet(e.exerciseId))}>
-                <Plus size={18} />
-                セットを追加
-              </button>
-              <button
-                aria-label={`${e.name}を今回だけ見送る`}
-                title="マイメニューには残します"
-                onClick={() => {
-                  if (
-                    confirm(
-                      "今回のトレーニングだけ見送ります。マイメニューと種目一覧には残します。",
-                    )
-                  )
-                    run(() => skipExerciseToday(database, s.id, e.exerciseId));
-                }}
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
           </section>
         );
       })}
@@ -806,6 +839,55 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
         <h2>トレーニング後の体重</h2>
         <WellnessEditor sessionId={s.id} />
       </section>
+      {showFooter && <SessionFooter session={s} />}
+    </>
+  );
+}
+
+function SessionFooter({ session: s }: { session: Entities["sessions"] }) {
+  const { data, database } = useData();
+  const lastDeleted = useLiveQuery(
+    async () =>
+      (await database.sets.where("sessionId").equals(s.id).toArray())
+        .filter(
+          (r) =>
+            r.deletedAt &&
+            s.exercises.some((e) => e.exerciseId === r.exerciseId),
+        )
+        .sort((a, b) =>
+          (b.deletedAt ?? "").localeCompare(a.deletedAt ?? ""),
+        )[0],
+    [database, s.id, s.revision],
+  );
+  const [until, setUntil] = useState(
+      () => Number(localStorage.getItem("takin-rest-" + s.id)) || 0,
+    ),
+    [now, setNow] = useState(Date.now());
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (!until || until > now) return;
+    localStorage.removeItem("takin-rest-" + s.id);
+    setUntil(0);
+    setFlash(true);
+  }, [until, now, s.id]);
+  useEffect(() => {
+    if (!flash) return;
+    const id = setTimeout(() => setFlash(false), 650);
+    return () => clearTimeout(id);
+  }, [flash]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, []);
+  if (!data?.profile) return null;
+  const timer = (seconds: number) => {
+    const end = seconds > 0 ? Date.now() + seconds * 1000 : 0;
+    setFlash(false);
+    localStorage.setItem("takin-rest-" + s.id, String(end));
+    setUntil(end);
+  };
+  return (
+    <>
       <details className="card exercise-picker">
         <summary>種目を追加</summary>
         <label>
@@ -951,6 +1033,10 @@ function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
           : localDate())
       }
       bodyOnly={sessionId !== null}
+      deferBodySave={
+        sessionId !== null &&
+        data.sessions.some((s) => s.id === sessionId && s.status !== "finished")
+      }
       plans={data.plans}
       exercises={data.exercises}
       requestedPlanId={requestedPlanId}
@@ -1122,6 +1208,8 @@ function Analysis() {
       <WeeklyTraining
         count={weekly.sessions}
         target={data.profile.targetDaysPerWeek}
+        startDay={weekly.startDay}
+        endDay={weekly.endDay}
       />
       {data.sessions.some((s) => s.status !== "finished") && (
         <p className="notice">

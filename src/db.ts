@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie";
 import { z } from "zod";
 import { schemas, type Meta, type Entities, type EntityName } from "./model";
 import { correctLegacyBodyWeights } from "./body-weight";
+import { removeRetiredDefaultExercises } from "./menu-cleanup";
 export interface SyncOperation {
   id: string;
   entityType: EntityName;
@@ -300,6 +301,7 @@ export async function importBackup(db: AppDB, b: Backup) {
         added++;
       }
   });
+  await removeRetiredDefaultExercises(db);
   return { added, duplicates, conflicts };
 }
 export { seed, installDefaultPlans } from "./catalog-db";

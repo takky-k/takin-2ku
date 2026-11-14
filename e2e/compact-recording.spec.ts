@@ -26,6 +26,19 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   await page.goto("./");
   await start(page);
   let card = page.locator(".exercise-card").first();
+  await expect(
+    page.getByRole("heading", { name: "トレーニング", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/^RIR =/)).toHaveCount(0);
+  await expect(card.locator(".eyebrow")).toHaveCount(0);
+  await expect(card.locator(".evergreen-notes")).toHaveCSS(
+    "border-top-width",
+    "0px",
+  );
+  await expect(card.locator(".evergreen-notes")).toHaveCSS(
+    "box-shadow",
+    "none",
+  );
   await expect(page.locator(".session-memo")).not.toHaveAttribute("open", "");
   await expect(card.locator(".evergreen-notes")).not.toHaveAttribute(
     "open",
@@ -75,6 +88,21 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   expect(add?.height).toBe(skip?.height);
   expect(skip!.x).toBeGreaterThan(add!.x + add!.width);
   expect(add!.height).toBeLessThan(46);
+  const memoSummary = card.locator(".set-notes summary");
+  const memoBox = await memoSummary.boundingBox();
+  expect(Math.abs(memoBox!.y - add!.y)).toBeLessThan(8);
+  await memoSummary.click();
+  await expect(card.locator(".exercise-actions")).not.toBeVisible();
+  await card
+    .getByLabel("セット1のメモ", { exact: true })
+    .fill("Synthetic compact memo");
+  await memoSummary.click();
+  await expect(card.locator(".exercise-actions")).toBeVisible();
+  await memoSummary.click();
+  await expect(card.getByLabel("セット1のメモ", { exact: true })).toHaveValue(
+    "Synthetic compact memo",
+  );
+  await memoSummary.click();
   const weight = page.getByRole("heading", {
       name: "トレーニング後の体重",
       exact: true,
@@ -86,14 +114,32 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   expect((await weight.boundingBox())!.y).toBeLessThan(
     (await end.boundingBox())!.y,
   );
+  expect(
+    await page
+      .getByRole("button", { name: "トレーニングを終了", exact: true })
+      .evaluate(
+        (el) =>
+          !!(
+            el.compareDocumentPosition(
+              document.querySelector(".exercise-picker")!,
+            ) & Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+      ),
+  ).toBe(true);
   await page.getByLabel("体重 (kg)", { exact: true }).fill("160");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator(".post-workout-weight")
+      .getByRole("button", { name: "保存", exact: true }),
+  ).toHaveCount(0);
   await finish(page);
   await start(page);
   card = page.locator(".exercise-card").first();
   await expect(card.locator(".previous-cell").first()).toContainText("100lb");
-  await expect(card.locator(".previous-cell").first()).toContainText("8回");
+  await expect(card.locator(".previous-cell").first()).toContainText("6回");
+  await expect(card.locator(".previous-cell").first()).toContainText(
+    "RIR2換算",
+  );
   page.once("dialog", (d) => d.accept());
   await card
     .getByRole("button", {
@@ -108,6 +154,6 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   await expect(page.locator(".menu-card").first()).toContainText(
     "ラットプルダウン",
   );
-  await expect(page.locator(".menu-card").first()).toContainText("5種目");
-  await expect(page.locator(".menu-card").first()).toContainText("13セット");
+  await expect(page.locator(".menu-card").first()).toContainText("4種目");
+  await expect(page.locator(".menu-card").first()).toContainText("12セット");
 });
