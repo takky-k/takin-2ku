@@ -86,7 +86,7 @@ test("compact tables, collapsed memos, default reps, running hidden timer and se
   expect((await weight.boundingBox())!.y).toBeLessThan(
     (await end.boundingBox())!.y,
   );
-  await page.getByLabel("体重 (lb)", { exact: true }).fill("160");
+  await page.getByLabel("体重 (kg)", { exact: true }).fill("160");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
   await finish(page);

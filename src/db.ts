@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import { z } from "zod";
 import { schemas, type Meta, type Entities, type EntityName } from "./model";
+import { correctLegacyBodyWeights } from "./body-weight";
 export interface SyncOperation {
   id: string;
   entityType: EntityName;
@@ -98,6 +99,19 @@ export class AppDB extends Dexie {
                 repsTouched: false,
               };
           });
+      });
+    this.version(5)
+      .stores({
+        ...stores,
+        importRows: "id,sourceHash,batchId,status",
+        importBatches: "id,fileHash",
+      })
+      .upgrade(async (tx) => {
+        const profiles = await tx.table("profiles").toArray();
+        const wellness = await tx.table("wellness").toArray();
+        correctLegacyBodyWeights(profiles, wellness);
+        await tx.table("profiles").bulkPut(profiles);
+        await tx.table("wellness").bulkPut(wellness);
       });
   }
 }
@@ -255,6 +269,7 @@ export function parseBackup(text: string): Backup {
 }
 export async function importBackup(db: AppDB, b: Backup) {
   b = parseBackup(JSON.stringify(b));
+  correctLegacyBodyWeights(b.data.profiles, b.data.wellness);
   let added = 0,
     duplicates = 0,
     conflicts = 0;
@@ -263,7 +278,10 @@ export async function importBackup(db: AppDB, b: Backup) {
       for (const row of b.data[key]) {
         const existing = await db.table(key).get(row.id);
         if (existing) {
-          if (JSON.stringify(existing) === JSON.stringify(row)) duplicates++;
+          if (
+            JSON.stringify(schemas[key].parse(existing)) === JSON.stringify(row)
+          )
+            duplicates++;
           else conflicts++;
           continue;
         }

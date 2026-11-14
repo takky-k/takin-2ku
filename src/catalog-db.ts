@@ -89,6 +89,7 @@ export async function seed(db: AppDB, demo = false) {
         goal: "筋肥大",
         targetDaysPerWeek: 4,
         targetWeightKg: null,
+        bodyWeightUnitVersion: 1,
         theme: "dark",
         priorityMuscles: ["胸", "背中", "肩", "上腕"],
       });
@@ -159,6 +160,7 @@ export async function seed(db: AppDB, demo = false) {
           painFlag: false,
           sorenessByMuscle: {},
           bodyWeightKg: 70 - n * 0.1,
+          bodyWeightUnitVersion: 1,
           notes: "架空のデモ記録",
         });
       }

@@ -52,6 +52,7 @@ export function emptyWellness(
     painFlag: false,
     sorenessByMuscle: {},
     bodyWeightKg: null,
+    bodyWeightUnitVersion: 1,
     notes: "",
     explicitInputFlags: {},
     sleepStatus: "not-acquired",

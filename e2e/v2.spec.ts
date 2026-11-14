@@ -152,11 +152,11 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await expect(
     page.getByRole("heading", { name: "トレーニング後の体重", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("体重 (lb)", { exact: true }).fill("160");
+  await page.getByLabel("体重 (kg)", { exact: true }).fill("160");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("体重 (lb)", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("体重 (kg)", { exact: true })).toHaveValue(
     "160",
   );
   await page.getByRole("link", { name: "分析", exact: true }).click();

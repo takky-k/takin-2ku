@@ -1130,6 +1130,30 @@ html[data-keyboard-editing="true"] .timer {
   visibility: hidden;
   pointer-events: none;
 }
+.exercise-picker > summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 10px 0;
+}
+.timer-finished-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: #ff0000;
+  pointer-events: none;
+  animation: timer-finished 650ms ease-out forwards;
+}
+@keyframes timer-finished {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 .session-memo > summary,
 .evergreen-notes > summary,
 .set-notes > summary {
@@ -1275,7 +1299,22 @@ html[data-keyboard-editing="true"] .timer {
 .body-goal progress {
   width: 100%;
 }
-.ai-consent { display:flex; gap:10px; align-items:flex-start; line-height:1.8; }
-.ai-consent input { width:22px; min-width:22px; min-height:22px; margin-top:2px; }
-.ai-connection code { overflow-wrap:anywhere; font-size:11px; }
-.ai-connection button { margin:4px 8px 4px 0; }
+.ai-consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.8;
+}
+.ai-consent input {
+  width: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  margin-top: 2px;
+}
+.ai-connection code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.ai-connection button {
+  margin: 4px 8px 4px 0;
+}

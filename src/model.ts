@@ -158,6 +158,8 @@ export const wellnessSchema = metaSchema.extend({
   painFlag: z.boolean(),
   sorenessByMuscle: z.record(z.string(), z.number().min(0).max(5)),
   bodyWeightKg: z.number().positive().nullable(),
+  bodyWeightUnitVersion: z.literal(1).optional(),
+  legacyBodyWeightKg: z.number().positive().optional(),
   notes: z.string(),
   explicitInputFlags: z.record(z.string(), z.boolean()).optional(),
   sleepStatus: z
@@ -210,6 +212,8 @@ export const profileSchema = metaSchema.extend({
   goal: z.string(),
   targetDaysPerWeek: z.number().min(1).max(7),
   targetWeightKg: z.number().positive().nullable(),
+  bodyWeightUnitVersion: z.literal(1).optional(),
+  legacyTargetWeightKg: z.number().positive().optional(),
   theme: z.enum(["dark", "light"]),
   priorityMuscles: z.array(z.string()),
 });
