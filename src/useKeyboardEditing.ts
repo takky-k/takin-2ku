@@ -14,7 +14,7 @@ const editable = (el: Element | null): el is HTMLElement =>
         "reset",
         "color",
       ].includes(el.type)));
-export function useKeyboardEditing() {
+export function useKeyboardEditing(resetKey = "") {
   useEffect(() => {
     const root = document.documentElement,
       vv = window.visualViewport;
@@ -29,6 +29,7 @@ export function useKeyboardEditing() {
       const height = vv?.height ?? innerHeight,
         focused = editable(document.activeElement),
         shrunken = baseline - height > 120;
+      if (!focused) wasOpen = false;
       if (focused && shrunken) wasOpen = true;
       if (wasOpen && !shrunken) {
         dismissed = document.activeElement;
@@ -77,18 +78,24 @@ export function useKeyboardEditing() {
         pointerHold = root.dataset.keyboardEditing === "true";
       }
     };
-    const release = () => {
+    const release = (e: Event) => {
       clearTimeout(releaseTimer);
-      releaseTimer = window.setTimeout(() => {
-        pointerHold = false;
-        viewport();
-      }, 50);
+      releaseTimer = window.setTimeout(
+        () => {
+          pointerHold = false;
+          viewport();
+          // iOS can synthesize click well after pointerup. Keep the layout stable
+          // through that click so the save button is not replaced by the bottom bar.
+        },
+        e.type === "click" ? 0 : 400,
+      );
     };
     document.addEventListener("focusin", focus);
     document.addEventListener("focusout", blur);
     document.addEventListener("pointerdown", pointer);
     document.addEventListener("pointerup", release);
     document.addEventListener("pointercancel", release);
+    document.addEventListener("click", release);
     vv?.addEventListener("resize", resized);
     window.addEventListener("resize", resized);
     viewport();
@@ -98,6 +105,7 @@ export function useKeyboardEditing() {
       document.removeEventListener("pointerdown", pointer);
       document.removeEventListener("pointerup", release);
       document.removeEventListener("pointercancel", release);
+      document.removeEventListener("click", release);
       vv?.removeEventListener("resize", resized);
       window.removeEventListener("resize", resized);
       clearTimeout(timer);
@@ -105,5 +113,5 @@ export function useKeyboardEditing() {
       cancelAnimationFrame(frame);
       delete root.dataset.keyboardEditing;
     };
-  }, []);
+  }, [resetKey]);
 }

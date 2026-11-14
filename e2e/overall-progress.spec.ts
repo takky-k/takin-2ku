@@ -46,7 +46,7 @@ test("compact numeric widths and default overall analysis with persisted body go
     }
   }
   await rir.blur();
-  await page.getByLabel("体重 (lb)", { exact: true }).fill("160");
+  await page.getByLabel("体重 (kg)", { exact: true }).fill("160");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
   await page
@@ -66,7 +66,7 @@ test("compact numeric widths and default overall analysis with persisted body go
   await expect(
     page.getByText("今週の筋群別セット", { exact: true }),
   ).toHaveCount(0);
-  await page.getByLabel("目標体重 (lb)", { exact: true }).fill("150");
+  await page.getByLabel("目標体重 (kg)", { exact: true }).fill("150");
   await page
     .locator(".body-goal")
     .getByRole("button", { name: "保存", exact: true })
@@ -75,7 +75,7 @@ test("compact numeric widths and default overall analysis with persisted body go
     page.getByRole("progressbar", { name: "目標体重への進捗", exact: true }),
   ).toHaveAttribute("value", "0");
   await page.reload();
-  await expect(page.getByLabel("目標体重 (lb)", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("目標体重 (kg)", { exact: true })).toHaveValue(
     "150",
   );
   await page
@@ -92,7 +92,7 @@ test("compact numeric widths and default overall analysis with persisted body go
   await expect(
     page.getByRole("heading", { name: "全種目の総合推移", exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel("目標体重 (lb)", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("目標体重 (kg)", { exact: true })).toHaveValue(
     "150",
   );
 });

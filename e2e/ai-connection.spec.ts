@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+// WebKit sends service-worker-controlled requests outside page.route(). This
+// test mocks all external AI traffic; service workers have their own E2E test.
+test.use({ serviceWorkers: "block" });
 test("AI setup requires explicit preparation and consent, and logged-out users stay local", async ({
   page,
 }) => {

@@ -1,12 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import type { AppDB } from "./db";
-import {
-  type Entities,
-  displayToKg,
-  kgToDisplay,
-  round,
-  localDate,
-} from "./model";
+import { type Entities, round, localDate } from "./model";
 import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
 import { sleepLabel, useSleepState } from "./sleep-sync";
@@ -90,7 +84,6 @@ export function WellnessForm({
   database,
   existing,
   sessionId = null,
-  unit,
   health,
   date = localDate(),
   bodyOnly = false,
@@ -143,6 +136,8 @@ export function WellnessForm({
   const manualSleep = draft.explicitInputFlags?.sleepHours === true;
   async function commit() {
     if (committing.current) return;
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
     committing.current = true;
     setSaving(true);
     try {
@@ -271,22 +266,17 @@ export function WellnessForm({
       )}
       {bodyOnly && (
         <label>
-          体重 ({unit})
+          体重 (kg)
           <input
             inputMode="decimal"
             type="number"
             min="1"
             step="any"
-            value={
-              draft.bodyWeightKg === null
-                ? ""
-                : round(kgToDisplay(draft.bodyWeightKg, unit))
-            }
+            value={draft.bodyWeightKg === null ? "" : round(draft.bodyWeightKg)}
             onChange={(e) =>
               change({
-                bodyWeightKg: e.target.value
-                  ? displayToKg(Number(e.target.value), unit)
-                  : null,
+                bodyWeightKg: e.target.value ? Number(e.target.value) : null,
+                bodyWeightUnitVersion: 1,
               })
             }
           />

@@ -13,5 +13,16 @@ export default defineConfig({
     url: "http://127.0.0.1:4173/takin-2ku/",
     reuseExistingServer: !process.env.CI,
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    {
+      name: "webkit",
+      use: {
+        browserName: "webkit",
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 3,
+      },
+    },
+  ],
 });

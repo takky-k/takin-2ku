@@ -96,21 +96,36 @@ const alive = <T extends { deletedAt: string | null }>(rows: T[]) =>
 function useData() {
   const demo = useUI((s) => s.demo),
     database = demo ? demoDb : db;
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "hidden") setRefresh((n) => n + 1);
+    };
+    window.addEventListener("pageshow", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
   const data = useLiveQuery(
-    async () => ({
-      exercises: alive(await database.exercises.toArray()),
-      plans: alive(await database.plans.toArray()).sort((a, b) =>
-        (a.catalogKey ?? a.name).localeCompare(b.catalogKey ?? b.name),
-      ),
-      sessions: alive(await database.sessions.toArray()),
-      sets: alive(await database.sets.toArray()),
-      wellness: alive(await database.wellness.toArray()),
-      health: alive(await database.health.toArray()),
-      recommendations: alive(await database.recommendations.toArray()),
-      profile: await database.profiles.get("main"),
-      pending: await database.queue.count(),
-    }),
-    [demo],
+    () =>
+      database.transaction("r", database.tables, async () => ({
+        exercises: alive(await database.exercises.toArray()),
+        plans: alive(await database.plans.toArray()).sort((a, b) =>
+          (a.catalogKey ?? a.name).localeCompare(b.catalogKey ?? b.name),
+        ),
+        sessions: alive(await database.sessions.toArray()),
+        sets: alive(await database.sets.toArray()),
+        wellness: alive(await database.wellness.toArray()),
+        health: alive(await database.health.toArray()),
+        recommendations: alive(await database.recommendations.toArray()),
+        profile: await database.profiles.get("main"),
+        pending: await database.queue.count(),
+      })),
+    [demo, refresh],
   );
   return { database, data };
 }
@@ -130,7 +145,8 @@ const date = (s: string) =>
     weekday: "short",
   });
 export function App() {
-  useKeyboardEditing();
+  const route = useLocation();
+  useKeyboardEditing(route.pathname);
   useEffect(() => {
     try {
       if (localStorage.getItem("takin-ai-auth-enabled") === "true")
@@ -139,7 +155,6 @@ export function App() {
       /* Local mode remains available. */
     }
   }, []);
-  const route = useLocation();
   const { data, database } = useData(),
     { error, setError } = useUI(),
     [online, setOnline] = useState(navigator.onLine),
@@ -496,6 +511,9 @@ function Workout() {
   const [finishing, setFinishing] = useState(false);
   const picker = useLocation().pathname === "/workout";
   const s = data?.sessions.find((s) => s.status === "active");
+  useEffect(() => {
+    if (!s) setFinishing(false);
+  }, [s?.id]);
   const latestFinished = data?.sessions
     .filter((s) => s.status === "finished")
     .sort(
@@ -521,10 +539,6 @@ function Workout() {
         <>
           <SessionEditor session={s} />
           <section className="card">
-            <h2>トレーニング後の体重</h2>
-            <WellnessEditor sessionId={s.id} />
-          </section>
-          <section className="card">
             <h2>今回のトレーニングを終了</h2>
             <button className="primary full" onClick={() => setFinishing(true)}>
               トレーニングを終了
@@ -547,8 +561,12 @@ function Workout() {
                     disabled={!data!.sets.some((r) => r.sessionId === s.id)}
                     onClick={() =>
                       run(async () => {
+                        if (document.activeElement instanceof HTMLElement)
+                          document.activeElement.blur();
                         await finishWorkout(database, s.id);
-                        setFinishing(false);
+                        // Keep the dialog until the live query renders the
+                        // finished session. Otherwise iOS can accept a weight
+                        // edit on the old form immediately before it unmounts.
                       })
                     }
                   >
@@ -600,6 +618,18 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
       () => Number(localStorage.getItem("takin-rest-" + s.id)) || 0,
     ),
     [now, setNow] = useState(Date.now());
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (!until || until > now) return;
+    localStorage.removeItem("takin-rest-" + s.id);
+    setUntil(0);
+    setFlash(true);
+  }, [until, now, s.id]);
+  useEffect(() => {
+    if (!flash) return;
+    const id = setTimeout(() => setFlash(false), 650);
+    return () => clearTimeout(id);
+  }, [flash]);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
@@ -643,7 +673,8 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
     });
   }
   const timer = (seconds: number) => {
-    const end = Date.now() + seconds * 1000;
+    const end = seconds > 0 ? Date.now() + seconds * 1000 : 0;
+    setFlash(false);
     localStorage.setItem("takin-rest-" + s.id, String(end));
     setUntil(end);
   };
@@ -771,9 +802,14 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           </section>
         );
       })}
-      <section className="card">
+      <section className="card post-workout-weight">
+        <h2>トレーニング後の体重</h2>
+        <WellnessEditor sessionId={s.id} />
+      </section>
+      <details className="card exercise-picker">
+        <summary>種目を追加</summary>
         <label>
-          種目を追加
+          追加する種目
           <select
             value=""
             onChange={(e) => {
@@ -827,7 +863,7 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
             }
           />
         </label>
-      </section>
+      </details>
       {lastDeleted && (
         <button
           className="full"
@@ -878,9 +914,10 @@ function SessionEditor({ session: s }: { session: Entities["sessions"] }) {
           停止
         </button>
         <span role="status" className="sr-only">
-          {until > 0 && until <= now ? "休憩終了" : ""}
+          {flash ? "休憩終了" : ""}
         </span>
       </div>
+      {flash && <div className="timer-finished-flash" aria-hidden="true" />}
     </>
   );
 }
@@ -985,7 +1022,11 @@ function History() {
               (!filter || sessionDay(s) === filter) &&
               (!exercise || s.exercises.some((e) => e.exerciseId === exercise)),
           )
-          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+          .sort(
+            (a, b) =>
+              sessionDay(b).localeCompare(sessionDay(a)) ||
+              b.startedAt.localeCompare(a.startedAt),
+          )
           .map((s) => (
             <button
               className="card history-link full"
@@ -1025,7 +1066,7 @@ function History() {
 function Analysis() {
   const { data, database } = useData(),
     [exercise, setExercise] = useState(""),
-    [days, setDays] = useState(28),
+    [days, setDays] = useState(0),
     [metric, setMetric] = useState("e1rm");
   if (!data?.profile) return null;
   const unit = data.profile.units,
@@ -1046,7 +1087,11 @@ function Analysis() {
           Date.now() - Date.parse(sessionDay(s) + "T12:00:00") <=
             days * 86400000),
     )
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    .sort(
+      (a, b) =>
+        sessionDay(a).localeCompare(sessionDay(b)) ||
+        a.startedAt.localeCompare(b.startedAt),
+    )
     .flatMap((s) => {
       const sets = data.sets.filter(
         (x) =>
@@ -1078,6 +1123,12 @@ function Analysis() {
         count={weekly.sessions}
         target={data.profile.targetDaysPerWeek}
       />
+      {data.sessions.some((s) => s.status !== "finished") && (
+        <p className="notice">
+          未完了のトレーニングがあります。入力は保存されています。分析グラフには「トレーニングを終了」→「完了を確定」した記録を反映します。
+          <Link to="/history">途中の記録を確認</Link>
+        </p>
+      )}
       <section className="card">
         <h2>{selected ? "種目の推移" : "全種目の総合推移"}</h2>
         <label>
@@ -1172,6 +1223,11 @@ function Analysis() {
           )
         ) : points.length ? (
           <div className="chart" role="img" aria-label="種目の進捗グラフ">
+            {metric === "e1rm" && points.every((p) => p.e1rm === null) && (
+              <p role="status">
+                記録は保存されています。推定1RMの対象（重量あり・1〜12回）がないため、指標を「最高重量」または「最多回数」に切り替えてください。
+              </p>
+            )}
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={points}>
                 <CartesianGrid stroke="#323843" vertical={false} />

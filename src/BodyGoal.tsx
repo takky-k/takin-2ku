@@ -20,7 +20,7 @@ export function BodyGoal({
   profile: Entities["profiles"];
   wellness: Entities["wellness"][];
 }) {
-  const unit = profile.units;
+  const unit = "kg";
   return (
     <BodyGoalForm
       key={unit + ":" + profile.targetWeightKg}
@@ -39,7 +39,7 @@ function BodyGoalForm({
   profile: Entities["profiles"];
   wellness: Entities["wellness"][];
 }) {
-  const unit = profile.units,
+  const unit = "kg",
     [input, setInput] = useState(
       profile.targetWeightKg === null
         ? ""
@@ -55,6 +55,8 @@ function BodyGoalForm({
     ),
     last = points.at(-1);
   async function persist() {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
     if (
       input.trim() &&
       (!Number.isFinite(Number(input)) ||
@@ -75,6 +77,7 @@ function BodyGoalForm({
           targetWeightKg: input.trim()
             ? displayToKg(Number(input), unit)
             : null,
+          bodyWeightUnitVersion: 1,
         }),
       );
       setMessage("保存しました");
