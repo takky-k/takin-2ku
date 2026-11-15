@@ -12,6 +12,16 @@ async function start(page: Page) {
 test("kg body weight, collapsed picker, red expiry flash and navigation survive saving", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    (window as any).timerVibrations = [];
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: (ms: number) => {
+        (window as any).timerVibrations.push(ms);
+        return true;
+      },
+    });
+  });
   await page.clock.install({ time: new Date("2026-11-01T20:00:00Z") });
   await page.goto("./");
   await start(page);
@@ -49,6 +59,15 @@ test("kg body weight, collapsed picker, red expiry flash and navigation survive 
   await page.clock.fastForward(30000);
   const flash = page.locator(".timer-finished-flash");
   await expect(flash).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).timerVibrations.filter((ms: number) => ms === 1000)
+            .length,
+      ),
+    )
+    .toBe(1);
   await expect(flash).toHaveCSS("background-color", "rgb(255, 0, 0)");
   await expect(flash).toHaveCSS("pointer-events", "none");
   await page.clock.fastForward(800);
@@ -59,6 +78,13 @@ test("kg body weight, collapsed picker, red expiry flash and navigation survive 
   await page.getByRole("button", { name: "タイマー停止", exact: true }).click();
   await page.clock.fastForward(31000);
   await expect(flash).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).timerVibrations.filter((ms: number) => ms === 1000)
+          .length,
+    ),
+  ).toBe(1);
   await page.getByLabel("体重 (kg)", { exact: true }).fill("70");
   await expect(
     weight.getByRole("button", { name: "保存", exact: true }),

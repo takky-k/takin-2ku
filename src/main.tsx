@@ -45,6 +45,8 @@ import {
   localDate,
 } from "./model";
 import { TrainingAnalysis } from "./TrainingAnalysis";
+import { DailySchedule } from "./DailySchedule";
+import { vibrateTimerEnd, stopTimerVibration } from "./timer-vibration";
 import { useUI } from "./store";
 import "./style.css";
 import { PlanEditor } from "./PlanEditor";
@@ -261,7 +263,10 @@ export function App() {
             </Link>
           )}
         <Routes key={database.name}>
-          <Route path="/" element={<Today key={appDate} />} />
+          <Route
+            path="/"
+            element={<Today key={appDate} storageScope={database.name} />}
+          />
           <Route path="/workout" element={<Workout />} />
           <Route path="/workout/current" element={<Workout />} />
           <Route path="/plans/new" element={<PlanEditRoute />} />
@@ -270,7 +275,7 @@ export function App() {
           <Route path="/analysis" element={<Analysis />} />
           <Route path="/ai" element={<Advice />} />
           <Route path="/settings" element={<Settings storage={storage} />} />
-          <Route path="*" element={<Today />} />
+          <Route path="*" element={<Today storageScope={database.name} />} />
         </Routes>
       </main>
       <nav aria-label="メインナビゲーション">
@@ -315,7 +320,7 @@ function Title({
     </div>
   );
 }
-function Today() {
+function Today({ storageScope }: { storageScope: string }) {
   return (
     <>
       <h1 className="sr-only">今日のコンディション</h1>
@@ -326,6 +331,7 @@ function Today() {
           weekday: "long",
         })}
       </p>
+      <DailySchedule storageScope={storageScope} />
       <section className="card condition-card">
         <h2>今日のコンディション</h2>
         <WellnessEditor />
@@ -828,11 +834,14 @@ function SessionFooter({ session: s }: { session: Entities["sessions"] }) {
     ),
     [now, setNow] = useState(Date.now());
   const [flash, setFlash] = useState(false);
+  const signaledUntil = useRef(0);
   useEffect(() => {
-    if (!until || until > now) return;
+    if (!until || until > now || signaledUntil.current === until) return;
+    signaledUntil.current = until;
     localStorage.removeItem("takin-rest-" + s.id);
     setUntil(0);
     setFlash(true);
+    vibrateTimerEnd();
   }, [until, now, s.id]);
   useEffect(() => {
     if (!flash) return;
@@ -845,6 +854,7 @@ function SessionFooter({ session: s }: { session: Entities["sessions"] }) {
   }, []);
   if (!data?.profile) return null;
   const timer = (seconds: number) => {
+    stopTimerVibration();
     const end = seconds > 0 ? Date.now() + seconds * 1000 : 0;
     setFlash(false);
     localStorage.setItem("takin-rest-" + s.id, String(end));
