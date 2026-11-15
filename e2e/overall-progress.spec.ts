@@ -62,10 +62,13 @@ test("compact numeric widths and default overall analysis with persisted body go
     page.getByRole("combobox", { name: "種目・器具", exact: true }),
   ).toHaveValue("");
   await expect(
-    page.getByRole("heading", { name: "全種目の総合推移", exact: true }),
+    page.getByRole("heading", { name: "トレーニングの積み重ね", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "全種目の総合推移グラフ", exact: true }),
+    page.getByRole("img", {
+      name: "トレーニング回数の推移グラフ",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     page.getByText("今週の筋群別セット", { exact: true }),
@@ -75,9 +78,7 @@ test("compact numeric widths and default overall analysis with persisted body go
     .locator(".body-goal")
     .getByRole("button", { name: "保存", exact: true })
     .click();
-  await expect(
-    page.getByRole("progressbar", { name: "目標体重への進捗", exact: true }),
-  ).toHaveAttribute("value", "0");
+  await expect(page.locator(".body-weight-summary")).toContainText("10kg");
   await page.reload();
   await expect(page.getByLabel("目標体重 (kg)", { exact: true })).toHaveValue(
     "150",
@@ -94,7 +95,7 @@ test("compact numeric widths and default overall analysis with persisted body go
   await context.setOffline(true);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "全種目の総合推移", exact: true }),
+    page.getByRole("heading", { name: "トレーニングの積み重ね", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("目標体重 (kg)", { exact: true })).toHaveValue(
     "150",

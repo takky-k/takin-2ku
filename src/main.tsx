@@ -21,15 +21,6 @@ import {
   Play,
   Download,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import {
   db,
@@ -53,9 +44,7 @@ import {
   round,
   localDate,
 } from "./model";
-import { epley, weeklySummary } from "./analysis";
-import { overallProgress } from "./progress";
-import { BodyGoal } from "./BodyGoal";
+import { TrainingAnalysis } from "./TrainingAnalysis";
 import { useUI } from "./store";
 import "./style.css";
 import { PlanEditor } from "./PlanEditor";
@@ -425,34 +414,6 @@ function MyMenus() {
         </section>
       ))}
     </>
-  );
-}
-function WeeklyTraining({
-  count,
-  target,
-  startDay,
-  endDay,
-}: {
-  count: number;
-  target: number;
-  startDay: string;
-  endDay: string;
-}) {
-  return (
-    <section className="hero" aria-label="今週のトレーニング">
-      <div className="hero-top">
-        <span>今週のトレーニング</span>
-        <Activity size={21} />
-      </div>
-      <div className="hero-number">
-        {count}
-        <small> / {target} 回</small>
-      </div>
-      <progress max={target} value={count} />
-      <p className="hint">
-        {startDay}〜{endDay} · 完了したトレーニングのみ
-      </p>
-    </section>
   );
 }
 function PlanEditRoute() {
@@ -1170,227 +1131,13 @@ function History() {
   );
 }
 function Analysis() {
-  const { data, database } = useData(),
-    [exercise, setExercise] = useState(""),
-    [days, setDays] = useState(0),
-    [metric, setMetric] = useState("e1rm");
+  const { data, database } = useData();
   if (!data?.profile) return null;
-  const unit = data.profile.units,
-    selected = exercise,
-    weekly = weeklySummary(data.sessions, data.sets);
-  const overall = overallProgress(data.sessions, data.sets)
-    .filter(
-      (p) =>
-        days === 0 ||
-        Date.now() - Date.parse(p.day + "T12:00:00") <= days * 86400000,
-    )
-    .map((p) => ({ ...p, name: date(p.day + "T12:00:00") }));
-  const points = data.sessions
-    .filter(
-      (s) =>
-        s.status === "finished" &&
-        (days === 0 ||
-          Date.now() - Date.parse(sessionDay(s) + "T12:00:00") <=
-            days * 86400000),
-    )
-    .sort(
-      (a, b) =>
-        sessionDay(a).localeCompare(sessionDay(b)) ||
-        a.startedAt.localeCompare(b.startedAt),
-    )
-    .flatMap((s) => {
-      const sets = data.sets.filter(
-        (x) =>
-          x.sessionId === s.id &&
-          x.exerciseId === selected &&
-          x.completedAt &&
-          x.setType !== "warmup",
-      );
-      if (!sets.length) return [];
-      return [
-        {
-          name: date(sessionDay(s) + "T12:00:00"),
-          weight: round(
-            kgToDisplay(Math.max(...sets.map((x) => x.weightKg)), unit),
-          ),
-          reps: Math.max(...sets.map((x) => x.reps)),
-          e1rm: sets.some((x) => epley(x) !== null)
-            ? round(
-                kgToDisplay(Math.max(...sets.map((x) => epley(x) ?? 0)), unit),
-              )
-            : null,
-        },
-      ];
-    });
   return (
-    <>
-      <Title eyebrow="SMALL STEPS, REAL PROGRESS" title="進捗と分析" />
-      <WeeklyTraining
-        count={weekly.sessions}
-        target={data.profile.targetDaysPerWeek}
-        startDay={weekly.startDay}
-        endDay={weekly.endDay}
-      />
-      {data.sessions.some((s) => s.status !== "finished") && (
-        <p className="notice">
-          未完了のトレーニングが
-          {data.sessions.filter((s) => s.status !== "finished").length}
-          件あります（
-          {data.sessions
-            .filter((s) => s.status !== "finished")
-            .map((s) => `${sessionDay(s)} ${s.name}`)
-            .join("、")}
-          ）。前回欄と週の回数には完了済みの記録を反映します。実施済みなら履歴を開き、その日の記録を完了として保存してください。
-          <Link to="/history">途中の記録を確認</Link>
-        </p>
-      )}
-      <section className="card">
-        <h2>{selected ? "種目の推移" : "全種目の総合推移"}</h2>
-        <label>
-          種目・器具
-          <select
-            value={selected ?? ""}
-            onChange={(e) => setExercise(e.target.value)}
-          >
-            <option value="">全種目（総合）</option>
-            {data.exercises.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} / {e.equipmentId}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="filter">
-          <label>
-            期間
-            <select
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-            >
-              <option value="28">4週</option>
-              <option value="84">12週</option>
-              <option value="183">6か月</option>
-              <option value="0">全期間</option>
-            </select>
-          </label>
-          {selected && (
-            <label>
-              指標
-              <select
-                value={metric}
-                onChange={(e) => setMetric(e.target.value)}
-              >
-                <option value="e1rm">推定1RM ({unit})</option>
-                <option value="weight">最高重量 ({unit})</option>
-                <option value="reps">最多回数</option>
-              </select>
-            </label>
-          )}
-        </div>
-        {!selected ? (
-          overall.length ? (
-            <>
-              <div className="progress-value">
-                <strong>{overall.at(-1)!.score}</strong>
-                <span>初回を100とした総合指数</span>
-              </div>
-              <div
-                className="chart"
-                role="img"
-                aria-label="全種目の総合推移グラフ"
-              >
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={overall}>
-                    <CartesianGrid stroke="#323843" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis
-                      width={42}
-                      domain={["auto", "auto"]}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip
-                      contentStyle={{ background: "#20252e", color: "#eee" }}
-                    />
-                    <Line
-                      dataKey="score"
-                      isAnimationActive={false}
-                      name="総合指数"
-                      stroke="var(--accent)"
-                      strokeWidth={3}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="hint">
-                {overall.at(-1)!.exercises}種目・器具の記録（うち2回以上の実績{" "}
-                {overall.at(-1)!.compared}）。同日内は最後の集計値。
-              </p>
-              {!overall.at(-1)!.compared && (
-                <p className="muted">
-                  比較できる実績が不足しています。現在は基準値です。
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="muted">
-              トレーニングを記録すると総合推移を表示します。
-            </p>
-          )
-        ) : points.length ? (
-          <div className="chart" role="img" aria-label="種目の進捗グラフ">
-            {metric === "e1rm" && points.every((p) => p.e1rm === null) && (
-              <p role="status">
-                記録は保存されています。推定1RMの対象（重量あり・1〜12回）がないため、指標を「最高重量」または「最多回数」に切り替えてください。
-              </p>
-            )}
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={points}>
-                <CartesianGrid stroke="#323843" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis width={40} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ background: "#20252e", color: "#eee" }}
-                />
-                <Line
-                  dataKey={metric}
-                  name={metric === "reps" ? "回数" : unit}
-                  stroke="var(--accent)"
-                  strokeWidth={3}
-                  connectNulls={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <p>
-              直近：
-              {points.at(-1)?.[metric as "weight" | "reps" | "e1rm"] ??
-                "判断不可"}{" "}
-              {metric === "reps" ? "回" : unit}
-            </p>
-          </div>
-        ) : (
-          <p className="muted">グラフを表示する記録がありません。</p>
-        )}
-        <p className="hint">
-          {selected
-            ? "推定1RMはEpley式の参考値（1〜12回のみ）。異なるマシン間の比較には使いません。"
-            : "同じ種目・器具ごとの推定1RMを初回=100に換算し、直近の値を等しい比重で平均します。休んだ種目は直近値を維持。対象種目の増減でも指数は変わります。筋肉量や体型の到達率ではありません。補助付き・自重種目、ウォームアップ、13回以上は集計しません。"}
-        </p>
-      </section>
-      <BodyGoal
-        database={database}
-        profile={data.profile}
-        wellness={data.wellness}
-      />
-      <Link className="button full" to="/history">
-        保存したトレーニング記録を確認
-      </Link>
-      <section className="card">
-        <h2>回復・個人予測</h2>
-        <p className="muted">
-          睡眠・疲労と実績の関係は、記録が少ない間は判断できません。個人予測モデルは未実装です。
-        </p>
-      </section>
-    </>
+    <TrainingAnalysis
+      database={database}
+      data={{ ...data, profile: data.profile }}
+    />
   );
 }
 function Advice() {

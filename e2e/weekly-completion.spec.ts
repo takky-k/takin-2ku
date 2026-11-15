@@ -34,9 +34,7 @@ test("two completions plus one active workout shows two, including a workout res
   await start(page);
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await expect(page.locator(".hero-number")).toHaveText(/2\s*\/\s*4\s*回/);
-  await expect(
-    page.getByText(/2026-11-09〜2026-11-14.*完了したトレーニングのみ/),
-  ).toBeVisible();
+  await expect(page.locator(".training-days .trained")).toHaveCount(2);
   await page.reload();
   await expect(page.locator(".hero-number")).toHaveText(/2\s*\/\s*4\s*回/);
   await page

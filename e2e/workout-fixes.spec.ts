@@ -81,13 +81,12 @@ test("kg body weight, collapsed picker, red expiry flash and navigation survive 
   }
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await page.getByLabel("目標体重 (kg)").fill("65");
+  await page.getByLabel("目標体重 (kg)").blur();
   await page
     .locator(".body-goal")
     .getByRole("button", { name: "保存", exact: true })
     .click();
-  await expect(page.locator(".body-goal .progress-value")).toContainText(
-    "65kg",
-  );
+  await expect(page.locator(".body-weight-summary")).toContainText("5kg");
   await page.reload();
   await expect(page.getByLabel("目標体重 (kg)")).toHaveValue("65");
 });
@@ -125,21 +124,18 @@ test("old records, high-rep results and foreground refresh remain visible in ana
     page.getByRole("combobox", { name: "期間", exact: true }),
   ).toHaveValue("0");
   await expect(
-    page.getByRole("img", { name: "全種目の総合推移グラフ", exact: true }),
+    page.getByRole("img", {
+      name: "トレーニング回数の推移グラフ",
+      exact: true,
+    }),
   ).toBeVisible();
   await page
     .getByRole("combobox", { name: "種目・器具", exact: true })
     .selectOption({ label: "ラットプルダウン / ラットプルダウン" });
-  await expect(
-    page.getByRole("status").filter({ hasText: "記録は保存されています" }),
-  ).toBeVisible();
   await page
     .getByRole("combobox", { name: "指標", exact: true })
     .selectOption("reps");
-  await expect(page.getByText(/直近：15 回/)).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "種目・器具", exact: true })
-    .selectOption({ label: "ラットプルダウン / ラットプルダウン" });
+  await expect(page.locator(".trend-current strong")).toContainText("15回");
   await page
     .getByRole("combobox", { name: "指標", exact: true })
     .selectOption("weight");
@@ -167,17 +163,17 @@ test("old records, high-rep results and foreground refresh remain visible in ana
     db.close();
     window.dispatchEvent(new Event("pageshow"));
   });
-  await expect(page.getByText(/直近：176\.37 lb/)).toBeVisible();
+  await expect(page.locator(".trend-current strong")).toHaveText("176.37lb");
   await page
     .getByRole("combobox", { name: "期間", exact: true })
     .selectOption("28");
   await expect(
-    page.getByText("グラフを表示する記録がありません。", { exact: true }),
+    page.getByText("まだ記録がありません", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("combobox", { name: "期間", exact: true })
     .selectOption("0");
-  await expect(page.getByText(/直近：176\.37 lb/)).toBeVisible();
+  await expect(page.locator(".trend-current strong")).toHaveText("176.37lb");
   await page
     .getByRole("link", { name: "保存したトレーニング記録を確認" })
     .click();

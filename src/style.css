@@ -1399,3 +1399,244 @@ main:has(.timer) {
 .ai-connection button {
   margin: 4px 8px 4px 0;
 }
+
+/* Training progress: compact, mobile-first achievement cards. */
+.training-analysis {
+  padding-top: 12px;
+}
+.analysis-title {
+  font-size: 24px;
+  margin: 4px 0 20px;
+}
+.training-week {
+  padding: 22px;
+}
+.training-week .hero-top {
+  font-size: 14px;
+  align-items: center;
+  gap: 8px;
+}
+.week-goal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.training-week .hero-number {
+  margin: 12px 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+.training-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-top: 18px;
+  gap: 8px;
+}
+.training-days > div {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+.training-days b {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--field);
+  font-size: 15px;
+}
+.training-days .trained b {
+  background: var(--accent);
+  color: var(--bg);
+}
+.training-days .today > span {
+  color: var(--accent);
+  font-weight: 700;
+}
+.training-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.training-stat {
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.training-stat > span,
+.body-weight-summary span,
+.trend-current > span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.training-stat strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.training-stat strong small,
+.best-value strong small,
+.body-weight-summary strong small,
+.trend-current strong small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 5px;
+  font-weight: 400;
+}
+.analysis-history {
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding: 14px;
+  font-size: 12px;
+}
+.analysis-history span {
+  min-width: 0;
+}
+.analysis-history svg {
+  flex-shrink: 0;
+}
+.analysis-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.analysis-section-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+.training-analysis h2 {
+  font-size: 16px;
+}
+.record-badge {
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+.best-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.best-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.best-row > div:first-child {
+  min-width: 0;
+}
+.best-row b {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.best-row small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.best-value {
+  text-align: right;
+  flex-shrink: 0;
+}
+.best-value strong {
+  font-size: 22px;
+  font-weight: 600;
+}
+.best-value strong small {
+  display: inline;
+}
+.best-value > span {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.analysis-filters {
+  margin: 16px 0;
+}
+.analysis-filters label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.analysis-filters select {
+  color: var(--accent);
+}
+.analysis-filters .filter {
+  gap: 12px;
+}
+.analysis-filters .filter > label {
+  flex: 1;
+  min-width: 0;
+}
+.trend-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 16px;
+}
+.trend-current strong {
+  font-size: 26px;
+  font-weight: 600;
+}
+.analysis-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 28px 0;
+  font-size: 13px;
+}
+.body-weight-summary {
+  display: flex;
+  gap: 32px;
+  margin: 20px 0;
+}
+.body-weight-summary strong {
+  font-size: 28px;
+  font-weight: 600;
+  display: block;
+  margin-top: 6px;
+}
+.training-analysis .goal-input {
+  margin-bottom: 0;
+}
+@media (max-width: 350px) {
+  .training-week {
+    padding: 18px 14px;
+  }
+  .week-goal {
+    font-size: 10px;
+  }
+  .training-days {
+    gap: 4px;
+  }
+  .training-stat {
+    padding: 14px;
+  }
+}
+
+.more-bests > summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 12px 0 0;
+  min-height: 40px;
+}

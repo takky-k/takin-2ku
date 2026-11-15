@@ -259,11 +259,6 @@ export function WellnessForm({
               />
             ))}
           </div>
-          {selectedPlan && (
-            <p className="hint">
-              他の部位は、主な部位と全身の筋肉痛を目安に調整します。
-            </p>
-          )}
           <Scale
             label="睡眠時間"
             min={0}
@@ -283,9 +278,6 @@ export function WellnessForm({
               })
             }
           />
-          <p className="hint">
-            0.5時間刻み。手入力した場合は取込データより優先します。未入力に戻すと取込データを使用します。
-          </p>
           <div className="sleep-reading">
             <span>ショートカットの睡眠</span>
             <b>{sleepLabel(sleep.status, hours)}</b>

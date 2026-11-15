@@ -68,7 +68,7 @@ test("A/B previous results, three weekly completions, fixed timer and collapsibl
   }
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await expect(page.locator(".hero-number")).toHaveText(/3\s*\/\s*4\s*回/);
-  await expect(page.getByText(/2026-11-09〜2026-11-13/)).toBeVisible();
+  await expect(page.locator(".training-days .trained")).toHaveCount(3);
 });
 test("unfinished past workout stays separate and can be completed on its original day", async ({
   page,
@@ -82,7 +82,7 @@ test("unfinished past workout stays separate and can be completed on its origina
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await expect(page.locator(".hero-number")).toHaveText(/1\s*\/\s*4\s*回/);
   await page
-    .getByRole("link", { name: "途中の記録を確認", exact: true })
+    .getByRole("link", { name: "保存したトレーニング記録を確認", exact: true })
     .click();
   await expect(page.locator(".history-link")).toHaveCount(2);
   await page.locator(".history-link").filter({ hasText: "途中" }).click();
