@@ -189,8 +189,14 @@ function SetRow({
   useEffect(() => {
     if (observedRevision.current === row.revision) return;
     observedRevision.current = row.revision;
-    if (!dirty.current) {
-      setFields(initial(row, unit));
+    const incoming = initial(row, unit);
+    // A blur can precede a live-query snapshot from an earlier keystroke.
+    // Keep the current edit until storage has caught up with all its fields.
+    if (dirty.current) {
+      if (JSON.stringify(incoming) === JSON.stringify(fields))
+        dirty.current = false;
+    } else {
+      setFields(incoming);
     }
   }, [row.revision, unit]);
   async function persist(next: Fields) {
@@ -370,7 +376,6 @@ function SetRow({
             value={fields.weight}
             onChange={(e) => edit("weight", e.target.value)}
             onBlur={() => {
-              dirty.current = false;
               void persist(fields);
             }}
           />
@@ -390,7 +395,6 @@ function SetRow({
             value={fields.reps}
             onChange={(e) => edit("reps", e.target.value)}
             onBlur={() => {
-              dirty.current = false;
               void persist(fields);
             }}
           />
@@ -404,7 +408,6 @@ function SetRow({
             value={fields.rir}
             onChange={(e) => edit("rir", e.target.value)}
             onBlur={() => {
-              dirty.current = false;
               void persist(fields);
             }}
           />

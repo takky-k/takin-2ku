@@ -53,8 +53,10 @@ test("two completions plus one active workout shows two, including a workout res
     .click();
   await expect(page).toHaveURL(/#\/$/);
   await expect(
-    page.getByRole("combobox", { name: "今日のメニュー", exact: true }),
-  ).toHaveValue("");
+    page
+      .getByRole("combobox", { name: "今日のメニュー", exact: true })
+      .locator("option:checked"),
+  ).toHaveText("B｜胸・肩・三頭筋");
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await expect(page.locator(".hero-number")).toHaveText(/2\s*\/\s*4\s*回/);
   await page

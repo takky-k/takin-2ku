@@ -167,3 +167,25 @@ it("restores the faint default after an override is erased and saves it on finis
   await finishWorkout(db, id);
   expect((await db.sets.get(row.id))?.reps).toBe(row.reps);
 });
+
+it("keeps typed reps when blur is followed by a delayed snapshot from the preceding weight edit", async () => {
+  const { db, row } = await setup();
+  const view = render(
+    <SetTable database={db} rows={[row]} previous={[]} unit="lb" />,
+  );
+  const reps = screen.getByLabelText("セット1の回数");
+  fireEvent.change(reps, { target: { value: "7" } });
+  fireEvent.blur(reps);
+  const delayed = {
+    ...row,
+    revision: row.revision + 1,
+    inputState: { ...row.inputState!, weight: "82", weightTouched: true },
+  };
+  view.rerender(
+    <SetTable database={db} rows={[delayed]} previous={[]} unit="lb" />,
+  );
+  expect(reps).toHaveValue(7);
+  await waitFor(async () =>
+    expect((await db.sets.get(row.id))?.inputState?.reps).toBe("7"),
+  );
+});

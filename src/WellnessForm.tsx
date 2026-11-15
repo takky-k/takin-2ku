@@ -5,6 +5,8 @@ import { emptyWellness, saveWellness, conditionMuscles } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
 import { sleepLabel, useSleepState } from "./sleep-sync";
 import { readBodyWeightDraft, stageBodyWeight } from "./body-weight-draft";
+import { workoutSequence } from "./workout-sequence";
+import { sessionDay } from "./training";
 function Scale({
   label,
   value,
@@ -91,6 +93,7 @@ export function WellnessForm({
   deferBodySave = false,
   plans = [],
   exercises = [],
+  sessions = [],
   requestedPlanId,
   onSaved,
 }: {
@@ -104,9 +107,12 @@ export function WellnessForm({
   deferBodySave?: boolean;
   plans?: Entities["plans"][];
   exercises?: Entities["exercises"][];
+  sessions?: Entities["sessions"][];
   requestedPlanId?: string;
   onSaved?: (saved: Entities["wellness"]) => void | Promise<void>;
 }) {
+  const sequence = workoutSequence(plans, sessions, date);
+  const menuTouched = useRef(false);
   const [draft, setDraft] = useState(() => {
       const base = existing ?? emptyWellness(sessionId, date);
       const raw =
@@ -137,15 +143,21 @@ export function WellnessForm({
     setMessage("");
   };
   useEffect(() => {
-    if (
-      !bodyOnly &&
-      requestedPlanId &&
-      plans.some((p) => p.id === requestedPlanId)
-    ) {
-      setDraft((d) => ({ ...d, plannedPlanId: requestedPlanId }));
-      dirty.current = true;
+    if (bodyOnly) return;
+    const requested = plans.some((p) => p.id === requestedPlanId)
+      ? requestedPlanId
+      : undefined;
+    if (requested || !menuTouched.current) {
+      const planId = requested ?? sequence.planId;
+      if (planId) setDraft((d) => ({ ...d, plannedPlanId: planId }));
     }
-  }, [requestedPlanId, !!plans.length]);
+  }, [
+    bodyOnly,
+    requestedPlanId,
+    sequence.planId,
+    existing?.id,
+    existing?.revision,
+  ]);
   const selectedPlan = plans.find((p) => p.id === draft.plannedPlanId),
     muscles = selectedPlan ? conditionMuscles(selectedPlan, exercises) : [];
   const hours = sleepHoursForDate(health, date);
@@ -199,12 +211,16 @@ export function WellnessForm({
       {!bodyOnly && (
         <>
           <label>
-            今日のメニュー
+            {sequence.previous
+              ? `前回は${sessionDay(sequence.previous)}に${sequence.previousKey}をやりました。`
+              : "前回のトレーニング記録はありません。"}
             <select
+              aria-label="今日のメニュー"
               value={draft.plannedPlanId ?? ""}
-              onChange={(e) =>
-                change({ plannedPlanId: e.target.value || null })
-              }
+              onChange={(e) => {
+                menuTouched.current = true;
+                change({ plannedPlanId: e.target.value || null });
+              }}
             >
               <option value="">A/Bなどのメニューを選択</option>
               {plans.map((p) => (

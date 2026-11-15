@@ -1,11 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 async function start(page: Page, key: string) {
   await page.getByRole("link", { name: "今日", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "今日のメニュー", exact: true })
-    .selectOption({
-      label: key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
-    });
+  await expect(
+    page
+      .getByRole("combobox", { name: "今日のメニュー", exact: true })
+      .locator("option:checked"),
+  ).toHaveText(
+    key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
+  );
   await expect(page.getByRole("slider")).toHaveCount(4);
   await expect(page.getByRole("slider", { name: "睡眠時間" })).toHaveAttribute(
     "max",

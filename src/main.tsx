@@ -1042,6 +1042,7 @@ function WellnessEditor({ sessionId = null }: { sessionId?: string | null }) {
       }
       plans={data.plans}
       exercises={data.exercises}
+      sessions={data.sessions}
       requestedPlanId={requestedPlanId}
       onSaved={async (saved) => {
         useUI.getState().setError("");

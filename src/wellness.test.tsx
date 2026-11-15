@@ -150,7 +150,7 @@ it("asks only selected-plan muscles and retains values when switching between A 
   );
   expect(
     screen.queryByRole("slider", { name: "全身の筋肉痛" }),
-  ).not.toBeInTheDocument();
+  ).toBeInTheDocument();
   expect(
     screen.queryByRole("slider", { name: "胸の筋肉痛" }),
   ).not.toBeInTheDocument();
