@@ -124,7 +124,11 @@ it("records RIR zero with unchanged default reps and preserves empty RIR on the 
   );
   expect(
     others.every(
-      (r) => r.completedAt && r.rir === null && r.repsSource === "default",
+      (r) =>
+        r.completedAt &&
+        r.rir?.min === 1 &&
+        r.rirSource === "default" &&
+        r.repsSource === "default",
     ),
   ).toBe(true);
 });

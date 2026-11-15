@@ -56,7 +56,7 @@ async function saveCondition(page: Page, key: string) {
     key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
   );
   for (const slider of await page
-    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .getByRole("slider", { name: /の筋肉痛$/ })
     .all())
     await slider.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -71,12 +71,12 @@ test("record tab always opens menu picker and preserves both drafts while requir
     .getByRole("button", { name: "開始する", exact: true })
     .click();
   await expect(page).toHaveURL(/#\/\?plan=/);
-  await expect(page.getByRole("alert")).toContainText("筋肉疲労");
+  await expect(page.getByRole("alert")).toContainText("筋肉痛");
   await expect(
-    page.getByRole("slider", { name: "胸の筋肉疲労", exact: true }),
+    page.getByRole("slider", { name: "胸の筋肉痛", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("slider", { name: "背中の筋肉疲労", exact: true }),
+    page.getByRole("slider", { name: "背中の筋肉痛", exact: true }),
   ).toBeVisible();
   await saveCondition(page, "A");
   await expect(page).toHaveURL(/#\/workout\/current$/);
@@ -102,7 +102,7 @@ test("record tab always opens menu picker and preserves both drafts while requir
     .click();
   await expect(page).toHaveURL(/#\/\?plan=/);
   await expect(
-    page.getByRole("slider", { name: "背中の筋肉疲労", exact: true }),
+    page.getByRole("slider", { name: "背中の筋肉痛", exact: true }),
   ).toHaveCount(0);
   await saveCondition(page, "B");
   await expect(
@@ -160,9 +160,9 @@ test("saving incomplete condition stays on today and a valid saved B starts dire
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "B｜胸・肩・三頭筋" });
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.locator(".save-status")).toContainText("筋肉疲労");
+  await expect(page.locator(".save-status")).toContainText("筋肉痛");
   for (const slider of await page
-    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .getByRole("slider", { name: /の筋肉痛$/ })
     .all())
     await slider.press("Home");
   await page.evaluate(async () => {
@@ -182,6 +182,6 @@ test("saving incomplete condition stays on today and a valid saved B starts dire
   ).toBeVisible();
   await page.getByRole("link", { name: "今日", exact: true }).click();
   await expect(
-    page.getByRole("slider", { name: "胸の筋肉疲労", exact: true }),
+    page.getByRole("slider", { name: "胸の筋肉痛", exact: true }),
   ).toHaveValue("1");
 });

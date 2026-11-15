@@ -113,7 +113,10 @@ function initial(row: WorkoutSet, unit: "kg" | "lb"): Fields {
           row.completedAt && row.repsSource !== "default"
             ? String(row.reps)
             : "",
-        rir: row.rir === null ? "" : formatRir(row.rir),
+        rir:
+          row.rir === null || row.rirSource === "default"
+            ? ""
+            : formatRir(row.rir),
         weightTouched: false,
         repsTouched: !!row.completedAt,
       };
@@ -240,6 +243,7 @@ function SetRow({
           current.defaultReps ?? (current.reps > 0 ? current.reps : undefined),
         repsSource: validReps ? repsSource : current.repsSource,
         rir: validRir ? rir : current.rir,
+        rirSource: validRir ? (rir ? "entered" : undefined) : current.rirSource,
         rirRaw: next.rir,
         rirConfidence: rir
           ? rir.min === rir.max

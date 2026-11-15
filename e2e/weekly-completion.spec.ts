@@ -4,7 +4,7 @@ async function start(page: Page) {
   await page
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "A｜背中・リアデルト・二頭筋" });
-  for (const s of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
+  for (const s of await page.getByRole("slider", { name: /の筋肉痛$/ }).all())
     await s.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.locator(".exercise-card")).toHaveCount(4);
@@ -44,12 +44,12 @@ test("two completions plus one active workout shows two, including a workout res
     .click();
   page.once("dialog", (d) => d.dismiss());
   await page
-    .getByRole("button", { name: "このトレーニングを消す", exact: true })
+    .getByRole("button", { name: "トレーニングを削除", exact: true })
     .click();
   await expect(page.locator(".exercise-card")).toHaveCount(4);
   page.once("dialog", (d) => d.accept());
   await page
-    .getByRole("button", { name: "このトレーニングを消す", exact: true })
+    .getByRole("button", { name: "トレーニングを削除", exact: true })
     .click();
   await expect(page).toHaveURL(/#\/$/);
   await expect(

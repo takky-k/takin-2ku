@@ -52,7 +52,7 @@ test("AI setup requires explicit preparation and consent, and logged-out users s
   await page
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "A｜背中・リアデルト・二頭筋" });
-  for (const r of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
+  for (const r of await page.getByRole("slider", { name: /の筋肉痛$/ }).all())
     await r.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page).toHaveURL(/#\/workout\/current$/);

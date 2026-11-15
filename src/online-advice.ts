@@ -2,6 +2,7 @@ import { type AppDB, demoDb, meta, save } from "./db";
 import { localDate, type Entities } from "./model";
 import { comparison, sessionDay } from "./training";
 import { effectiveSleepHours } from "./health";
+import { fatigueForMuscle, sorenessForMuscle } from "./wellness";
 import { aiRequestSchema, validateAiReply } from "./ai-contract";
 import { AI_ENDPOINT, hasAiConsent, aiToken, useAI } from "./ai-auth";
 import { decideRecommendation } from "./recommendations";
@@ -33,8 +34,11 @@ export async function buildAIInput(db: AppDB, id: string) {
     fatigue: Object.fromEntries(
       session.exercises.flatMap((e) => {
         const values = logs
-          .map((w) => w.fatigueByMuscle?.[e.muscle])
-          .filter((n): n is number => n !== undefined);
+          .flatMap((w) => [
+            fatigueForMuscle(w, e.muscle),
+            sorenessForMuscle(w, e.muscle),
+          ])
+          .filter((n): n is number => n !== null);
         return values.length ? [[e.muscle, Math.max(...values)]] : [];
       }),
     ),
@@ -88,7 +92,7 @@ export async function buildAIInput(db: AppDB, id: string) {
           ordinal: r.ordinal,
           weightKg: r.weightKg,
           reps: r.reps,
-          rir: r.rir,
+          rir: r.rirSource === "default" ? null : r.rir,
         })),
       },
     ];

@@ -435,8 +435,11 @@ nav a.active {
   color: var(--muted);
 }
 .timer {
-  position: sticky;
-  bottom: 87px;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100% - 32px), 720px);
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
   z-index: 5;
   display: flex;
   align-items: center;
@@ -992,7 +995,7 @@ input[type="number"]::-webkit-outer-spin-button {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
-  bottom: 87px;
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
 }
 .timer > span:first-child {
   grid-column: 1/5;
@@ -1141,14 +1144,15 @@ html[data-keyboard-editing="true"] .timer {
   z-index: 2147483647;
   background: #ff0000;
   pointer-events: none;
-  animation: timer-finished 650ms ease-out forwards;
+  animation: timer-finished 1000ms ease-out forwards;
 }
 @keyframes timer-finished {
   0% {
     opacity: 0;
   }
-  15% {
-    opacity: 1;
+  10%,
+  85% {
+    opacity: 0.85;
   }
   100% {
     opacity: 0;
@@ -1219,8 +1223,24 @@ html[data-keyboard-editing="true"] .timer {
 }
 .workout-finish-actions button {
   min-width: 0;
-  font-size: 13px;
-  padding: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  min-height: 44px;
+  padding: 6px 3px;
+}
+.exercise-card > summary.section-heading {
+  display: list-item;
+  cursor: pointer;
+  min-height: 44px;
+}
+.exercise-card > summary.section-heading > div {
+  display: inline;
+}
+.exercise-card > summary h2 {
+  display: inline;
+}
+main:has(.timer) {
+  padding-bottom: calc(240px + env(safe-area-inset-bottom, 0px));
 }
 .set-entry-actions > .set-notes {
   flex: 1;

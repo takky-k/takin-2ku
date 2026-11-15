@@ -4,7 +4,7 @@ async function start(page: Page) {
   await page
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "A｜背中・リアデルト・二頭筋" });
-  for (const s of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
+  for (const s of await page.getByRole("slider", { name: /の筋肉痛$/ }).all())
     await s.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.locator(".exercise-card").first()).toBeVisible();
@@ -51,7 +51,9 @@ test("kg body weight, collapsed picker, red expiry flash and navigation survive 
   await expect(flash).toHaveCount(1);
   await expect(flash).toHaveCSS("background-color", "rgb(255, 0, 0)");
   await expect(flash).toHaveCSS("pointer-events", "none");
-  await page.clock.fastForward(1000);
+  await page.clock.fastForward(800);
+  await expect(flash).toHaveCount(1);
+  await page.clock.fastForward(200);
   await expect(flash).toHaveCount(0);
   await page.getByRole("button", { name: "30秒", exact: true }).click();
   await page.getByRole("button", { name: "タイマー停止", exact: true }).click();

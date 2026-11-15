@@ -9,6 +9,7 @@ export type SetInputs = Partial<
     | "repsSource"
     | "defaultReps"
     | "rir"
+    | "rirSource"
     | "rirRaw"
     | "rirConfidence"
     | "inputUnit"
@@ -32,6 +33,7 @@ const patchSchema = setSchema
     repsSource: true,
     defaultReps: true,
     rir: true,
+    rirSource: true,
     rirRaw: true,
     rirConfidence: true,
     inputUnit: true,

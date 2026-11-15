@@ -10,7 +10,7 @@ import {
 export class ConditionRequired extends Error {
   constructor(public planId: string) {
     super(
-      "今日のメニューを選び、鍛える部位の筋肉疲労を確認して保存してください。",
+      "今日のメニューを選び、主な部位と全身の筋肉痛を確認して保存してください。",
     );
     this.name = "ConditionRequired";
   }
@@ -26,10 +26,16 @@ async function requireCondition(db: AppDB, planId: string, muscles: string[]) {
     !latest ||
     latest.plannedPlanId !== planId ||
     !muscles.length ||
-    muscles.some((m) => {
-      const n = latest.fatigueByMuscle?.[m];
-      return n === undefined || n < 1 || n > 5;
-    })
+    (latest.conditionReferenceMuscle
+      ? !muscles.includes(latest.conditionReferenceMuscle) ||
+        ![latest.conditionReferenceMuscle, "全身"].every((m) => {
+          const n = latest.sorenessByMuscle[m];
+          return n !== undefined && n >= 1 && n <= 5;
+        })
+      : muscles.some((m) => {
+          const n = latest.fatigueByMuscle?.[m];
+          return n === undefined || n < 1 || n > 5;
+        }))
   )
     throw new ConditionRequired(planId);
 }

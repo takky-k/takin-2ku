@@ -16,7 +16,7 @@ async function condition(page: Page, key = "A") {
     label: key === "A" ? "A｜背中・リアデルト・二頭筋" : "B｜胸・肩・三頭筋",
   });
   for (const slider of await page
-    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .getByRole("slider", { name: /の筋肉痛$/ })
     .all())
     await slider.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -60,7 +60,7 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await page.reload();
   await context.setOffline(true);
   await startA(page);
-  const card = page.locator("section.exercise-card").first();
+  const card = page.locator(".exercise-card").first();
   await expect(card.getByLabel("セット1の重量", { exact: true })).toHaveValue(
     "100",
   );
@@ -93,7 +93,7 @@ test("offline table inputs, RIR zero and ranges, autosave and undo", async ({
   await page.reload();
   await expect(
     page
-      .locator("section.exercise-card")
+      .locator(".exercise-card")
       .first()
       .getByLabel("セット1のRIR", { exact: true }),
   ).toHaveValue("0");
@@ -197,11 +197,11 @@ test("menu editing, monochrome mobile navigation, optional wellness and settings
   await page
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "A｜背中・リアデルト・二頭筋" });
-  const mood = page.getByRole("slider", { name: "気分", exact: true }),
-    fatigue = page.getByRole("slider", { name: "背中の筋肉疲労", exact: true });
+  const mood = page.getByRole("slider", { name: "体調", exact: true }),
+    fatigue = page.getByRole("slider", { name: "背中の筋肉痛", exact: true });
   await expect(mood).toHaveAttribute("aria-valuetext", "未入力");
   await mood.press("End");
-  for (const r of await page.getByRole("slider", { name: /の筋肉疲労$/ }).all())
+  for (const r of await page.getByRole("slider", { name: /の筋肉痛$/ }).all())
     await r.press("Home");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page).toHaveURL(/#\/workout\/current$/);
@@ -240,7 +240,7 @@ test("approval changes only this session, template and actual RIR stay intact", 
 }) => {
   await page.goto("./");
   await startA(page);
-  const card = page.locator("section.exercise-card").first();
+  const card = page.locator(".exercise-card").first();
   for (let n = 1; n <= 3; n++) {
     await card.getByLabel(`セット${n}のRIR`, { exact: true }).fill("2");
     await card.getByLabel(`セット${n}のRIR`, { exact: true }).blur();

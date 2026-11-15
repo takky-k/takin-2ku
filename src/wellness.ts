@@ -20,9 +20,23 @@ export function fatigueForMuscle(
   log: Entities["wellness"],
   muscle: string,
 ): number | null {
+  if (log.conditionReferenceMuscle) return null;
   return log.fatigueByMuscle !== undefined
     ? (log.fatigueByMuscle[muscle] ?? null)
     : log.fatigue;
+}
+export function conditionMuscles(
+  plan: Entities["plans"],
+  exercises: Entities["exercises"][],
+) {
+  const muscles = plannedMuscles(plan, exercises);
+  const primary =
+    plan.catalogKey === "A"
+      ? "背中"
+      : plan.catalogKey === "B"
+        ? "胸"
+        : muscles[0];
+  return primary ? [primary, "全身"] : [];
 }
 export function sorenessForMuscle(log: Entities["wellness"], muscle: string) {
   const group = muscle.includes("上腕")
@@ -30,7 +44,14 @@ export function sorenessForMuscle(log: Entities["wellness"], muscle: string) {
     : muscle === "僧帽筋"
       ? "背中"
       : muscle.split(/[（(]/)[0];
-  return log.sorenessByMuscle[muscle] ?? log.sorenessByMuscle[group] ?? null;
+  const measured = log.sorenessByMuscle[muscle] ?? log.sorenessByMuscle[group];
+  const inferred = log.conditionReferenceMuscle
+    ? log.sorenessByMuscle[log.conditionReferenceMuscle]
+    : undefined;
+  const values = [measured ?? inferred, log.sorenessByMuscle["全身"]].filter(
+    (n): n is number => n !== undefined,
+  );
+  return values.length ? Math.max(...values) : null;
 }
 export function isMuscleFatigued(log: Entities["wellness"], muscle: string) {
   return (

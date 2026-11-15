@@ -8,21 +8,26 @@ import {
 } from "@testing-library/react";
 import { AppDB, seed } from "./db";
 import { WellnessForm } from "./WellnessForm";
-import { emptyWellness, saveWellness } from "./wellness";
+import {
+  emptyWellness,
+  saveWellness,
+  sorenessForMuscle,
+  isMuscleFatigued,
+} from "./wellness";
 import { importHealth } from "./health";
 const opened: AppDB[] = [];
-it("saves, restores and clears manual sleep including zero, half hours and 24 hours", async () => {
+it("saves, restores and clears manual sleep including zero, half hours and 12 hours", async () => {
   const db = fresh();
   const view = render(<WellnessForm database={db} unit="kg" health={[]} />);
   const slider = screen.getByRole("slider", { name: "睡眠時間" });
   expect(slider).toHaveAttribute("min", "0");
-  expect(slider).toHaveAttribute("max", "24");
+  expect(slider).toHaveAttribute("max", "12");
   expect(slider).toHaveAttribute("step", "0.5");
   expect(slider).toHaveAttribute("aria-valuetext", "未入力");
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await screen.findByText("保存しました");
   expect((await db.wellness.toArray())[0].sleepHours).toBeNull();
-  for (const value of [0, 7.5, 24]) {
+  for (const value of [0, 7.5, 12]) {
     fireEvent.change(slider, { target: { value: String(value) } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(async () =>
@@ -33,7 +38,7 @@ it("saves, restores and clears manual sleep including zero, half hours and 24 ho
   const saved = (await db.wellness.toArray())[0];
   view.unmount();
   render(<WellnessForm database={db} unit="kg" health={[]} existing={saved} />);
-  expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveValue("24");
+  expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveValue("12");
   fireEvent.click(
     screen.getByRole("button", { name: "睡眠時間を未入力に戻す" }),
   );
@@ -108,8 +113,8 @@ it("keeps untouched sliders null and upserts on explicit save without clearing t
   fireEvent.change(screen.getByRole("combobox", { name: "今日のメニュー" }), {
     target: { value: plans.find((p) => p.catalogKey === "A")!.id },
   });
-  const mood = screen.getByRole("slider", { name: "気分" }),
-    fatigue = screen.getByRole("slider", { name: "背中の筋肉疲労" });
+  const mood = screen.getByRole("slider", { name: "体調" }),
+    fatigue = screen.getByRole("slider", { name: "背中の筋肉痛" });
   expect(mood).toHaveAttribute("aria-valuetext", "未入力");
   fireEvent.change(mood, { target: { value: "5" } });
   expect(await db.wellness.count()).toBe(0);
@@ -123,9 +128,7 @@ it("keeps untouched sliders null and upserts on explicit save without clearing t
   fireEvent.change(fatigue, { target: { value: "1" } });
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(async () =>
-    expect((await db.wellness.get(first.id))?.fatigueByMuscle?.["背中"]).toBe(
-      1,
-    ),
+    expect((await db.wellness.get(first.id))?.sorenessByMuscle["背中"]).toBe(1),
   );
   expect(await db.wellness.count()).toBe(1);
   expect(mood).toHaveValue("5");
@@ -146,39 +149,37 @@ it("asks only selected-plan muscles and retains values when switching between A 
     />,
   );
   expect(
-    screen.queryByRole("slider", { name: "全身の筋肉疲労" }),
+    screen.queryByRole("slider", { name: "全身の筋肉痛" }),
   ).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("slider", { name: "胸の筋肉疲労" }),
+    screen.queryByRole("slider", { name: "胸の筋肉痛" }),
   ).not.toBeInTheDocument();
   const select = screen.getByRole("combobox", { name: "今日のメニュー" });
   fireEvent.change(select, {
     target: { value: plans.find((p) => p.catalogKey === "A")!.id },
   });
-  fireEvent.change(screen.getByRole("slider", { name: "背中の筋肉疲労" }), {
+  fireEvent.change(screen.getByRole("slider", { name: "背中の筋肉痛" }), {
     target: { value: "5" },
   });
   fireEvent.change(select, {
     target: { value: plans.find((p) => p.catalogKey === "B")!.id },
   });
   expect(
-    screen.queryByRole("slider", { name: "背中の筋肉疲労" }),
+    screen.queryByRole("slider", { name: "背中の筋肉痛" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("slider", { name: "胸の筋肉疲労" })).toHaveAttribute(
+  expect(screen.getByRole("slider", { name: "胸の筋肉痛" })).toHaveAttribute(
     "aria-valuetext",
     "未入力",
   );
   fireEvent.change(select, {
     target: { value: plans.find((p) => p.catalogKey === "A")!.id },
   });
-  expect(screen.getByRole("slider", { name: "背中の筋肉疲労" })).toHaveValue(
-    "5",
-  );
+  expect(screen.getByRole("slider", { name: "背中の筋肉痛" })).toHaveValue("5");
 });
 it("marks an explicitly selected neutral value and retains input after storage failure", async () => {
   const db = fresh();
   render(<WellnessForm database={db} unit="kg" health={[]} />);
-  const mood = screen.getByRole("slider", { name: "気分" });
+  const mood = screen.getByRole("slider", { name: "体調" });
   fireEvent.pointerUp(mood);
   const fail = () => {
     throw Error("test disk full");
@@ -223,7 +224,7 @@ it("awaits the saved callback, prevents duplicate saves and reports start failur
       }}
     />,
   );
-  const mood = screen.getByRole("slider", { name: "気分" });
+  const mood = screen.getByRole("slider", { name: "体調" });
   fireEvent.change(mood, { target: { value: "4" } });
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(calls).toBe(1));
@@ -234,4 +235,19 @@ it("awaits the saved callback, prevents duplicate saves and reports start failur
   await screen.findByText(/コンディションは保存済みです.*目標を準備できません/);
   expect(await db.wellness.count()).toBe(1);
   expect(mood).toHaveValue("4");
+});
+
+it("uses primary and whole-body soreness for other muscles without inventing measured values", () => {
+  const log = {
+    ...emptyWellness(null),
+    conditionReferenceMuscle: "背中",
+    sorenessByMuscle: { 背中: 4, 全身: 2 },
+    fatigueByMuscle: { 上腕二頭筋: 1 },
+  };
+  expect(sorenessForMuscle(log, "上腕二頭筋")).toBe(4);
+  expect(isMuscleFatigued(log, "上腕二頭筋")).toBe(true);
+  expect(log.sorenessByMuscle).toEqual({ 背中: 4, 全身: 2 });
+  expect(
+    sorenessForMuscle({ ...log, sorenessByMuscle: { 背中: 1, 全身: 5 } }, "肩"),
+  ).toBe(5);
 });

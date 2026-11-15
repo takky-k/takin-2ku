@@ -406,7 +406,10 @@ function MyMenus() {
             >
               <Play size={17} />
               {data.sessions.some(
-                (s) => s.planId === p.id && s.status !== "finished",
+                (s) =>
+                  s.planId === p.id &&
+                  s.status !== "finished" &&
+                  sessionDay(s) === localDate(),
               )
                 ? "続きから記録"
                 : "開始する"}
@@ -597,7 +600,7 @@ function Workout() {
                     });
                 }}
               >
-                このトレーニングを消す
+                トレーニングを削除
               </button>
             </div>
             {finishing && (
@@ -609,7 +612,7 @@ function Workout() {
                 <h3>今回の記録を確認</h3>
                 <p>
                   {data!.sets.filter((r) => r.sessionId === s.id).length}
-                  セットを保存します。回数が未変更なら、薄く表示された目標回数を使用します。やらなかった種目・セットは先に外してください。
+                  セットを保存します。回数が未変更なら目標回数、RIRが空欄なら1を使用します。入力した体重も一緒に保存します。やらなかった種目・セットは先に外してください。
                 </p>
                 <p className="hint">Apple Healthへの書き込みは行いません。</p>
                 <div className="actions">
@@ -764,15 +767,15 @@ function SessionEditor({
             )
           : [];
         return (
-          <section className="card exercise-card" key={e.exerciseId}>
-            <div className="section-heading">
+          <details className="card exercise-card" key={e.exerciseId} open>
+            <summary className="section-heading">
               <div>
                 <h2>{e.name}</h2>
                 {e.equipmentId && e.equipmentId.trim() !== e.name.trim() && (
                   <small className="muted">{e.equipmentId}</small>
                 )}
               </div>
-            </div>
+            </summary>
             <details
               className="evergreen-notes"
               aria-label={`${e.name}の永続フォームメモ`}
@@ -832,7 +835,7 @@ function SessionEditor({
                 </>
               }
             />
-          </section>
+          </details>
         );
       })}
       <section className="card post-workout-weight">
@@ -872,7 +875,7 @@ function SessionFooter({ session: s }: { session: Entities["sessions"] }) {
   }, [until, now, s.id]);
   useEffect(() => {
     if (!flash) return;
-    const id = setTimeout(() => setFlash(false), 650);
+    const id = setTimeout(() => setFlash(false), 1000);
     return () => clearTimeout(id);
   }, [flash]);
   useEffect(() => {
@@ -1088,6 +1091,22 @@ function History() {
           <button onClick={() => setSelected(null)}>← 一覧へ</button>
           <SessionEditor session={selectedSession} />
           <WellnessEditor sessionId={selectedSession.id} />
+          {selectedSession.status !== "finished" && (
+            <button
+              className="primary full"
+              onClick={() => {
+                const day = sessionDay(selectedSession);
+                if (
+                  confirm(
+                    `${day}のトレーニングを完了として保存しますか？未変更の回数は目標値、空欄のRIRは1として保存し、前回記録と週の回数へ反映します。実施していないセットは先に外してください。`,
+                  )
+                )
+                  run(() => finishWorkout(database, selectedSession.id, day));
+              }}
+            >
+              {sessionDay(selectedSession)}の記録を完了として保存
+            </button>
+          )}
           <button
             className="danger"
             onClick={() => {
@@ -1213,7 +1232,14 @@ function Analysis() {
       />
       {data.sessions.some((s) => s.status !== "finished") && (
         <p className="notice">
-          未完了のトレーニングがあります。入力は保存されています。分析グラフには「トレーニングを終了」→「完了を確定」した記録を反映します。
+          未完了のトレーニングが
+          {data.sessions.filter((s) => s.status !== "finished").length}
+          件あります（
+          {data.sessions
+            .filter((s) => s.status !== "finished")
+            .map((s) => `${sessionDay(s)} ${s.name}`)
+            .join("、")}
+          ）。前回欄と週の回数には完了済みの記録を反映します。実施済みなら履歴を開き、その日の記録を完了として保存してください。
           <Link to="/history">途中の記録を確認</Link>
         </p>
       )}

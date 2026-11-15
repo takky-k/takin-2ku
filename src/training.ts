@@ -113,13 +113,19 @@ export async function startWorkout(
         .equals("active")
         .filter((s) => !s.deletedAt)
         .first();
-      if (active?.planId === plan.id) return active.id;
+      if (active?.planId === plan.id && sessionDay(active) === localDate())
+        return active.id;
       if (active)
         await save(db, "sessions", revised({ ...active, status: "paused" }));
       const paused = await db.sessions
         .where("status")
         .equals("paused")
-        .filter((s) => !s.deletedAt && s.planId === plan.id)
+        .filter(
+          (s) =>
+            !s.deletedAt &&
+            s.planId === plan.id &&
+            sessionDay(s) === localDate(),
+        )
         .first();
       if (paused) {
         await save(db, "sessions", revised({ ...paused, status: "active" }));
@@ -251,7 +257,16 @@ export function comparison(
       : [],
   };
 }
-export async function finishWorkout(db: AppDB, id: string) {
+export async function finishWorkout(
+  db: AppDB,
+  id: string,
+  recordedDay?: string,
+) {
+  if (
+    recordedDay &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(recordedDay) || recordedDay > localDate())
+  )
+    throw Error("実施日を確認してください。");
   const rows = await db.sets
       .where("sessionId")
       .equals(id)
@@ -299,11 +314,17 @@ export async function finishWorkout(db: AppDB, id: string) {
       for (const row of current) {
         try {
           const valid = validatedSet(row);
-          if (row.completedAt) continue;
+          const actualRir = row.completedAt ? row.rir : valid.rir;
+          const defaultRir = actualRir === null;
           await save(
             db,
             "sets",
-            revised({ ...valid, completedAt: row.completedAt ?? stamp }),
+            revised({
+              ...(row.completedAt ? row : valid),
+              rir: defaultRir ? { min: 1, max: 1 } : actualRir,
+              rirSource: defaultRir ? "default" : (row.rirSource ?? "entered"),
+              completedAt: row.completedAt ?? stamp,
+            }),
           );
         } catch {
           throw Error(
@@ -311,11 +332,25 @@ export async function finishWorkout(db: AppDB, id: string) {
           );
         }
       }
-      await commitBodyWeightDraft(db, id, localDate(new Date(stamp)));
+      await commitBodyWeightDraft(
+        db,
+        id,
+        recordedDay ?? localDate(new Date(stamp)),
+      );
       await save(
         db,
         "sessions",
-        revised({ ...session, status: "finished", endedAt: stamp }),
+        revised({
+          ...session,
+          status: "finished",
+          endedAt: stamp,
+          ...(recordedDay
+            ? {
+                performedDateLocal: recordedDay,
+                timePrecision: "date" as const,
+              }
+            : {}),
+        }),
       );
     },
   );

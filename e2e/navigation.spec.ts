@@ -24,7 +24,7 @@ test("private import counts once in analysis, and start targets use history and 
     .getByRole("combobox", { name: "今日のメニュー", exact: true })
     .selectOption({ label: "B｜胸・肩・三頭筋" });
   for (const slider of await page
-    .getByRole("slider", { name: /の筋肉疲労$/ })
+    .getByRole("slider", { name: /の筋肉痛$/ })
     .all())
     await slider.press("End");
   await page.getByRole("button", { name: "保存", exact: true }).click();

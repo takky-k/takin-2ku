@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import type { AppDB } from "./db";
 import { type Entities, round, localDate } from "./model";
-import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
+import { emptyWellness, saveWellness, conditionMuscles } from "./wellness";
 import { SleepImport, sleepHoursForDate } from "./health";
 import { sleepLabel, useSleepState } from "./sleep-sync";
 import { readBodyWeightDraft, stageBodyWeight } from "./body-weight-draft";
@@ -147,7 +147,7 @@ export function WellnessForm({
     }
   }, [requestedPlanId, !!plans.length]);
   const selectedPlan = plans.find((p) => p.id === draft.plannedPlanId),
-    muscles = selectedPlan ? plannedMuscles(selectedPlan, exercises) : [];
+    muscles = selectedPlan ? conditionMuscles(selectedPlan, exercises) : [];
   const hours = sleepHoursForDate(health, date);
   const manualSleep = draft.explicitInputFlags?.sleepHours === true;
   async function commit() {
@@ -159,6 +159,9 @@ export function WellnessForm({
     try {
       const saved = await saveWellness(database, {
         ...draft,
+        ...(!bodyOnly && selectedPlan
+          ? { conditionReferenceMuscle: muscles[0] }
+          : {}),
         ...(!bodyOnly ? { fatigueByMuscle: draft.fatigueByMuscle ?? {} } : {}),
         ...(!bodyOnly
           ? {
@@ -212,7 +215,7 @@ export function WellnessForm({
             </select>
           </label>
           <Scale
-            label="気分"
+            label="体調"
             value={draft.mood}
             low="とても悪い"
             high="とても良い"
@@ -220,35 +223,40 @@ export function WellnessForm({
           />
           {!selectedPlan && (
             <p className="hint">
-              メニューを選ぶと、今日鍛える部位の筋肉疲労だけ表示します。
+              メニューを選ぶと、主な部位と全身の筋肉痛を表示します。
             </p>
           )}
           <div className="soreness-scales">
             {muscles.map((m) => (
               <Scale
                 key={m}
-                label={m + "の筋肉疲労"}
-                value={draft.fatigueByMuscle?.[m] ?? null}
-                low="疲れていない"
-                high="最も疲れている"
+                label={m + "の筋肉痛"}
+                value={draft.sorenessByMuscle[m] ?? null}
+                low="筋肉痛なし"
+                high="とても強い"
                 onChange={(n) => {
-                  const values = { ...draft.fatigueByMuscle };
+                  const values = { ...draft.sorenessByMuscle };
                   if (n === null) delete values[m];
                   else values[m] = n;
-                  change({ fatigueByMuscle: values });
+                  change({ sorenessByMuscle: values });
                 }}
               />
             ))}
           </div>
+          {selectedPlan && (
+            <p className="hint">
+              他の部位は、主な部位と全身の筋肉痛を目安に調整します。
+            </p>
+          )}
           <Scale
             label="睡眠時間"
             min={0}
-            max={24}
+            max={12}
             step={0.5}
             unit="時間"
             value={manualSleep ? draft.sleepHours : null}
             low="睡眠なし"
-            high="24時間"
+            high="12時間"
             onChange={(sleepHours) =>
               change({
                 sleepHours,
@@ -310,9 +318,7 @@ export function WellnessForm({
         </label>
       )}
       {deferBodySave ? (
-        <p className="hint">
-          入力した体重はトレーニングの完了時に一緒に保存します。
-        </p>
+        <p className="hint">スマホ財布を取って、靴脱いで測定</p>
       ) : (
         <button
           type="button"
