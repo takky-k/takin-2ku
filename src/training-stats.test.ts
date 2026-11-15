@@ -74,9 +74,9 @@ it("counts Monday-based sessions and performed sets, excluding drafts, deletion,
     row("sat", 50, 9, { deletedAt: "2026-11-14T12:00:00Z" }),
   ];
   const stats = trainingStats(sessions, rows, now);
-  expect(stats.total).toBe(4);
+  expect(stats.finished).toHaveLength(4);
   expect(stats.weekly.sessions).toBe(3);
-  expect(stats.weeklySets).toBe(3);
+  expect(stats.rows).toHaveLength(4);
   expect(stats.weekDays[0].count).toBe(2);
   expect(stats.weekDays[6].label).toBe("日");
   expect(stats.weekDays[6].count).toBe(0);
@@ -84,58 +84,9 @@ it("counts Monday-based sessions and performed sets, excluding drafts, deletion,
     0, 0, 1, 3,
   ]);
 });
-it("recognizes load and same-load rep records without counting the first observation as an update", () => {
-  const first = session("a", "2026-11-09"),
-    second = session("b", "2026-11-12"),
-    third = session("c", "2026-11-14");
-  expect(trainingStats([first], [row("a")], now).bests[0].updated).toBe(false);
-  const stats = trainingStats(
-    [first, second, third],
-    [row("a"), row("b", 55, 6), row("c", 55, 7), row("c", 40, 20)],
-    now,
-  );
-  expect(stats.bests).toHaveLength(1);
-  expect(stats.bests[0]).toMatchObject({
-    weightKg: 55,
-    reps: 7,
-    updated: true,
-    day: "2026-11-14",
-  });
-  expect(
-    trainingStats([first, second], [row("a", 55, 7), row("b", 55, 7)], now)
-      .bests[0].updated,
-  ).toBe(false);
-});
-it("separates machines and measurement bases and never calls assisted/unknown loads personal bests", () => {
-  const a = session("a", "2026-11-09"),
-    b = session("b", "2026-11-14");
-  const snapshot = b.exercises[0];
-  b.exercises = [
-    { ...snapshot, equipmentId: "other" },
-    { ...snapshot, exerciseId: "assisted", measurementBasis: "assisted" },
-    { ...snapshot, exerciseId: "unknown", measurementBasis: "unknown" },
-  ];
-  const stats = trainingStats(
-    [a, b],
-    [
-      row("a"),
-      row("b", 100, 10, { equipmentId: "other" }),
-      row("b", 100, 10, { exerciseId: "assisted" }),
-      row("b", 100, 10, { exerciseId: "unknown" }),
-    ],
-    now,
-  );
-  expect(stats.bests).toHaveLength(2);
-  expect(stats.bests.every((b) => !b.updated)).toBe(true);
-  b.exercises = [{ ...snapshot, measurementBasis: "dumbbellEach" }];
-  expect(
-    trainingStats([a, b], [row("a"), row("b", 100)], now).bests,
-  ).toHaveLength(2);
-});
 it("starts an empty week at Monday without fabricating records", () => {
   const stats = trainingStats([], [], new Date(2026, 10, 16, 12));
   expect(stats.weekDays[0].day).toBe("2026-11-16");
-  expect(stats.weeklySets).toBe(0);
-  expect(stats.bests).toEqual([]);
+  expect(stats.rows).toEqual([]);
   expect(workoutWeeks([], now)).toHaveLength(8);
 });

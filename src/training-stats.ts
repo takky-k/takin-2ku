@@ -50,90 +50,11 @@ export function trainingStats(
       today: key === localDate(now),
     };
   });
-  // Compare actual maximum load, then reps at that exact load, on the same
-  // exercise, equipment and measurement basis. First observations aren't PRs.
-  const best = new Map<
-    string,
-    {
-      key: string;
-      name: string;
-      equipmentId: string;
-      weightKg: number;
-      reps: number;
-      day: string;
-      updated: boolean;
-    }
-  >();
-  const latestId = finished.at(-1)?.id;
-  for (const session of finished) {
-    const current = new Map<string, WorkoutSet>();
-    for (const row of rows.filter((r) => r.sessionId === session.id)) {
-      const snapshot = session.exercises.find(
-        (e) =>
-          e.exerciseId === row.exerciseId && e.equipmentId === row.equipmentId,
-      );
-      if (
-        !snapshot ||
-        !snapshot.measurementBasis ||
-        ["assisted", "bodyweight", "unknown"].includes(
-          snapshot.measurementBasis,
-        ) ||
-        row.weightKg <= 0
-      )
-        continue;
-      const key = JSON.stringify([
-        row.exerciseId,
-        row.equipmentId,
-        snapshot.measurementBasis,
-      ]);
-      const prior = current.get(key);
-      if (
-        !prior ||
-        row.weightKg > prior.weightKg + 0.000001 ||
-        (Math.abs(row.weightKg - prior.weightKg) < 0.000001 &&
-          row.reps > prior.reps)
-      )
-        current.set(key, row);
-    }
-    for (const [key, row] of current) {
-      const prior = best.get(key),
-        snapshot = session.exercises.find(
-          (e) => e.exerciseId === row.exerciseId,
-        )!;
-      if (
-        !prior ||
-        row.weightKg > prior.weightKg + 0.000001 ||
-        (Math.abs(row.weightKg - prior.weightKg) < 0.000001 &&
-          row.reps > prior.reps)
-      )
-        best.set(key, {
-          key,
-          name: snapshot.name,
-          equipmentId: row.equipmentId,
-          weightKg: row.weightKg,
-          reps: row.reps,
-          day: sessionDay(session),
-          updated: !!prior && session.id === latestId,
-        });
-    }
-  }
   return {
     finished,
     rows,
     weekly,
     weekDays,
-    total: finished.length,
-    weeklySets: rows.filter((r) =>
-      finished.some(
-        (s) => s.id === r.sessionId && sessionDay(s) >= weekly.startDay,
-      ),
-    ).length,
-    bests: [...best.values()].sort(
-      (a, b) =>
-        Number(b.updated) - Number(a.updated) ||
-        b.day.localeCompare(a.day) ||
-        a.name.localeCompare(b.name),
-    ),
   };
 }
 export function workoutWeeks(

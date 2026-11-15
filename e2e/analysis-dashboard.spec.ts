@@ -28,7 +28,7 @@ async function workout(page: Page, day: number, weight?: string) {
   await page.getByRole("button", { name: "完了を確定", exact: true }).click();
   await expect(page.locator(".exercise-card")).toHaveCount(0);
 }
-test("clear achievement stats, real personal best, chart marks and history on mobile and desktop", async ({
+test("weekly attendance, charts and history without unwanted stats on mobile and desktop", async ({
   page,
 }, testInfo) => {
   await page.clock.install({ time: new Date(2026, 10, 9, 12) });
@@ -39,14 +39,10 @@ test("clear achievement stats, real personal best, chart marks and history on mo
   await workout(page, 12, "105");
   await page.getByRole("link", { name: "分析", exact: true }).click();
   await expect(page.locator(".hero-number")).toHaveText(/3\s*\/\s*4\s*回/);
+  await expect(page.locator(".training-stat,.personal-bests")).toHaveCount(0);
   await expect(
-    page.locator(".training-stat").filter({ hasText: "今週のセット" }),
-  ).toContainText("36セット");
-  await expect(
-    page.locator(".training-stat").filter({ hasText: "累計トレーニング" }),
-  ).toContainText("3回");
-  await expect(page.locator(".record-badge")).toHaveText("直近で1種目更新");
-  await expect(page.locator(".best-row").first()).toContainText("105lb");
+    page.getByText(/自己ベスト|今週のセット|累計トレーニング/),
+  ).toHaveCount(0);
   await expect(page.locator(".training-days .trained")).toHaveCount(3);
   await expect(
     page.locator(".training-analysis .hint,.training-analysis .notice"),

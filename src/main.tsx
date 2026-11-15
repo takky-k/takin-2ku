@@ -1108,12 +1108,10 @@ function History() {
                 <b>{s.name}</b>
                 <small>
                   {s.exercises.length}種目 ·{" "}
-                  {
-                    data.sets.filter(
-                      (x) => x.sessionId === s.id && x.completedAt,
-                    ).length
-                  }
-                  セット完了
+                  {s.source === "confirmed-history" &&
+                  !data.sets.some((x) => x.sessionId === s.id && x.completedAt)
+                    ? "セット記録なし"
+                    : `${data.sets.filter((x) => x.sessionId === s.id && x.completedAt).length}セット完了`}
                 </small>
               </span>
               <span className="tag">

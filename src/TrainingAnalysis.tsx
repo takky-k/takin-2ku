@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Check, Trophy, ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -73,8 +73,7 @@ export function TrainingAnalysis({
         },
       ];
     });
-  const series = workoutWeeks(stats.finished, now, days),
-    updated = stats.bests.filter((b) => b.updated).length;
+  const series = workoutWeeks(stats.finished, now, days);
   const latest = points.at(-1),
     metricUnit =
       metric === "weight" ? unit : metric === "reps" ? "回" : "セット";
@@ -118,49 +117,10 @@ export function TrainingAnalysis({
           ))}
         </div>
       </section>
-      <div className="training-stat-grid">
-        <section className="card training-stat">
-          <span>今週のセット</span>
-          <strong>
-            {stats.weeklySets}
-            <small>セット</small>
-          </strong>
-        </section>
-        <section className="card training-stat">
-          <span>累計トレーニング</span>
-          <strong>
-            {stats.total}
-            <small>回</small>
-          </strong>
-        </section>
-      </div>
       <Link className="button full analysis-history" to="/history">
         <span>保存したトレーニング記録を確認</span>
         <ChevronRight size={17} />
       </Link>
-      {stats.bests.length > 0 && (
-        <section className="card personal-bests">
-          <div className="analysis-section-title">
-            <h2>
-              <Trophy size={17} /> 自己ベスト
-            </h2>
-            {updated > 0 && (
-              <span className="record-badge">直近で{updated}種目更新</span>
-            )}
-          </div>
-          {stats.bests.slice(0, 3).map((b) => (
-            <BestRow key={b.key} record={b} unit={unit} />
-          ))}
-          {stats.bests.length > 3 && (
-            <details className="more-bests">
-              <summary>他の{stats.bests.length - 3}種目</summary>
-              {stats.bests.slice(3).map((b) => (
-                <BestRow key={b.key} record={b} unit={unit} />
-              ))}
-            </details>
-          )}
-        </section>
-      )}
       <section className="card analysis-trend">
         <h2>{selected ? "種目の推移" : "トレーニングの積み重ね"}</h2>
         <div className="analysis-filters">
@@ -309,34 +269,6 @@ export function TrainingAnalysis({
         profile={data.profile}
         wellness={data.wellness}
       />
-    </div>
-  );
-}
-
-function BestRow({
-  record: b,
-  unit,
-}: {
-  record: ReturnType<typeof trainingStats>["bests"][number];
-  unit: "kg" | "lb";
-}) {
-  return (
-    <div className="best-row">
-      <div>
-        <b>{b.name}</b>
-        {b.equipmentId !== b.name && <small>{b.equipmentId}</small>}
-        <small>{b.day.slice(5).replace("-", "/")}</small>
-      </div>
-      <div className="best-value">
-        <strong>
-          {round(kgToDisplay(b.weightKg, unit))}
-          <small>{unit}</small>
-        </strong>
-        <span>
-          × {b.reps}回{" "}
-          {b.updated && <ArrowUpRight size={14} aria-label="自己ベスト更新" />}
-        </span>
-      </div>
     </div>
   );
 }
