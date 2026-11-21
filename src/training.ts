@@ -243,6 +243,10 @@ export function comparison(
   return {
     previous,
     sameSlot,
+    elapsedDays: previous
+      ? (Date.parse(localDate(at)) - Date.parse(sessionDay(previous))) /
+        86400000
+      : null,
     previousSets: previous
       ? sets
           .filter(

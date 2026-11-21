@@ -35,6 +35,15 @@ const answer = () => ({
     targets: e.targets,
   })),
 });
+const decision = () => ({
+  decisions: [
+    {
+      exercise: 0,
+      action: "keep",
+      rationale: "実績不足のため維持します。",
+    },
+  ],
+});
 function setup(payload: Record<string, unknown> = {}) {
   const verify = vi.fn(async () => ({
       sub: "owner",
@@ -43,7 +52,7 @@ function setup(payload: Record<string, unknown> = {}) {
       ...payload,
     })),
     run = vi.fn(async (_model: string, _input: unknown): Promise<unknown> => ({
-      response: JSON.stringify(answer()),
+      response: JSON.stringify(decision()),
     })),
     limit = vi.fn(async () => ({ success: true }));
   const env: Env = {
@@ -126,7 +135,7 @@ it("requires rate limit, keeps RIR zero and null, returns a validated reply with
 it("parses Gemma chat completions and disables reasoning to avoid timeouts", async () => {
   const t = setup();
   t.run.mockResolvedValueOnce({
-    choices: [{ message: { content: JSON.stringify(answer()) } }],
+    choices: [{ message: { content: JSON.stringify(decision()) } }],
   });
   const r = await t.worker.fetch(request(), t.env);
   expect(r.status).toBe(200);
@@ -136,14 +145,7 @@ it("parses Gemma chat completions and disables reasoning to avoid timeouts", asy
   expect(t.run.mock.calls[0][1]).toMatchObject({
     max_completion_tokens: 2000,
     chat_template_kwargs: { enable_thinking: false },
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "training_recommendations",
-        strict: true,
-        schema: { type: "object", additionalProperties: false },
-      },
-    },
+    response_format: { type: "json_object" },
   });
   for (const choices of [
     [],
@@ -153,6 +155,26 @@ it("parses Gemma chat completions and disables reasoning to avoid timeouts", asy
     t.run.mockResolvedValueOnce({ choices });
     expect((await t.worker.fetch(request(), t.env)).status).toBe(502);
   }
+});
+it("maps a repeat decision to the matching previous set and strips the request-only ordinal", async () => {
+  const { worker, env, run } = setup();
+  const requestInput = structuredClone(input);
+  requestInput.exercises[0].targets[0] = {
+    ...input.exercises[0].targets[0],
+    reps: 9,
+    ordinal: 0,
+  };
+  const repeat = decision();
+  repeat.decisions[0].action = "repeat";
+  run.mockResolvedValue({ response: repeat });
+  const result = await worker.fetch(request(requestInput), env);
+  expect(result.status).toBe(200);
+  expect((await result.json()).recommendations[0].targets).toEqual(
+    input.exercises[0].targets,
+  );
+  requestInput.exercises[0].locked = true;
+  const locked = await worker.fetch(request(requestInput), env);
+  expect((await locked.json()).recommendations[0].targets[0].reps).toBe(9);
 });
 it("compares RIR bounds by value while preserving zero versus unknown", () => {
   const reply = structuredClone(answer());

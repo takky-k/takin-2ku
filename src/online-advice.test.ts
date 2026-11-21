@@ -32,7 +32,7 @@ function response(input: Awaited<ReturnType<typeof buildAIInput>>) {
     recommendations: input!.input.exercises.map((e) => ({
       exerciseId: e.exerciseId,
       rationale: "維持する参考提案です",
-      targets: e.targets,
+      targets: e.targets.map(({ ordinal: _ordinal, ...target }) => target),
     })),
   };
 }

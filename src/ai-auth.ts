@@ -2,6 +2,42 @@ import { create } from "zustand";
 import type { Auth, User } from "@firebase/auth";
 import { validateAiReply } from "./ai-contract";
 export const AI_ENDPOINT = "https://takin-2ku-ai.tk-tk-tk-20020115.workers.dev";
+export async function fetchAdvice(body: string, token: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch(AI_ENDPOINT + "/advice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body,
+      signal: controller.signal,
+      credentials: "omit",
+    });
+    if (!response.ok) {
+      const messages: Record<number, string> = {
+        401: "Googleの認証を確認できません。再ログインしてください。",
+        403: "このアカウントまたは接続元にはAIの利用許可がありません。",
+        429: "AIの利用回数の上限です。少し待って再試行してください。",
+        502: "AIが有効な提案を返せませんでした。時間をおいて再試行してください。",
+        503: "AI受付の設定が完了していません。",
+      };
+      throw Error(
+        messages[response.status] ??
+          `AI接続に失敗しました（HTTP ${response.status}）。`,
+      );
+    }
+    return await response.json();
+  } catch (error) {
+    if (controller.signal.aborted)
+      throw Error("AIの応答が45秒以内に届きませんでした。再試行してください。");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const consentKey = "takin-ai-consent-v1";
 export function hasAiConsent() {
   try {
@@ -165,23 +201,10 @@ export async function testAIConnection() {
         },
       ],
     };
-    const response = await fetch(AI_ENDPOINT + "/advice", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + (await user.getIdToken()),
-      },
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(15000),
-      credentials: "omit",
-    });
-    if (!response.ok)
-      throw Error(
-        response.status === 503
-          ? "本人UIDの許可設定が必要です。ログイン完了をこのチャットで知らせてください"
-          : "接続を確認できませんでした。無料枠や回数制限を確認してください",
-      );
-    const raw = await response.json();
+    const raw = await fetchAdvice(
+      JSON.stringify(input),
+      await user.getIdToken(),
+    );
     if (raw.model !== "@cf/google/gemma-4-26b-a4b-it")
       throw Error("モデルを確認できません");
     validateAiReply(input, { recommendations: raw.recommendations });

@@ -85,29 +85,19 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       exercise = exercises.find((x) => x.id === e.exerciseId),
       evidence = history.previousSets,
       increment = observedIncrement(evidence);
-    const locked =
-      exercise?.autoProgression === false || current.some((r) => r.isLocked);
+    const locked = exercise?.autoProgression === false;
     const proposedTargets = current.map((r) => {
       const previous = evidence.find((p) => p.ordinal === r.ordinal);
       let weightKg = r.weightKg,
         reps = r.reps;
-      // Untouched targets can follow the latest actual performance on this exact
-      // machine. A manual edit or a safety restriction keeps today's target.
-      if (
-        previous &&
-        !locked &&
-        !r.inputState?.weightTouched &&
-        !r.inputState?.repsTouched &&
-        !r.rirRaw
-      ) {
+      if (previous && !locked && !r.isLocked) {
         weightKg =
-          pain || fatigued || shortSleep || lowMood
+          history.elapsedDays !== null &&
+          history.elapsedDays >= 10 &&
+          (pain || fatigued || shortSleep || lowMood)
             ? Math.min(r.weightKg, previous.weightKg)
             : previous.weightKg;
-        reps =
-          pain || fatigued || shortSleep || lowMood
-            ? Math.min(r.reps, previous.reps)
-            : previous.reps;
+        reps = previous.reps;
       }
       if (
         !pain &&
@@ -115,6 +105,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
         !shortSleep &&
         !lowMood &&
         !locked &&
+        !r.isLocked &&
         previous &&
         previous.rir &&
         previous.rir.min >= 2 &&
@@ -137,19 +128,20 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
         targetRir: r.targetRir ?? { min: 2, max: 2 },
       };
     });
-    const rationale = locked
-      ? "本人指定の固定セットです。重量・回数を自動変更しません。"
-      : pain
-        ? "痛み・体調不良の記録があるため増量しません。継続の可否を本人が確認してください。"
-        : fatigued
-          ? "疲労・筋肉痛が強いため増量しません。まず休憩、セット数や最終セットRIRの調整を本人が検討してください。"
-          : shortSleep
-            ? "取得した睡眠が6時間未満のため、今回は増加を提案しません。具体的なパフォーマンス低下量は推測しません。"
-            : lowMood
-              ? "保存済みの気分が低いため、今回は増加を見送る保守的な提案です。気分だけで性能を断定しません。"
-              : !evidence.length
-                ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
-                : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
+    const rationale =
+      locked || current.every((row) => row.isLocked)
+        ? "本人指定の固定セットです。重量・回数を自動変更しません。"
+        : pain
+          ? "痛み・体調不良の記録があるため増量しません。継続の可否を本人が確認してください。"
+          : fatigued
+            ? "疲労・筋肉痛が強いため増量しません。まず休憩、セット数や最終セットRIRの調整を本人が検討してください。"
+            : shortSleep
+              ? "取得した睡眠が6時間未満のため、今回は増加を提案しません。具体的なパフォーマンス低下量は推測しません。"
+              : lowMood
+                ? "保存済みの気分が低いため、今回は増加を見送る保守的な提案です。気分だけで性能を断定しません。"
+                : !evidence.length
+                  ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
+                  : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
     recommendations.push({
       ...meta(),
       sessionId: s.id,
@@ -158,7 +150,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       exerciseId: e.exerciseId,
       planId: s.planId ?? "",
       sourceModel: "local-rule",
-      modelVersion: "2.4",
+      modelVersion: "2.5",
       originalWeightKg: current[0].weightKg,
       proposedWeightKg: proposedTargets[0].weightKg,
       proposedTargets,
@@ -231,7 +223,7 @@ export async function decideRecommendation(
             "",
           new Date(s.startedAt),
           s.id,
-        ).previousSets;
+        );
         for (const target of r.proposedTargets) {
           const row = await db.sets.get(target.setId);
           if (
@@ -243,9 +235,9 @@ export async function decideRecommendation(
             row.revision !== r.setRevisions[row.id]
           )
             throw Error("セットが変更されています。提案を作り直してください");
-          const increase =
-            target.weightKg > row.weightKg + 0.000001 || target.reps > row.reps;
-          const previous = history.find((p) => p.ordinal === row.ordinal),
+          const previous = history.previousSets.find(
+              (p) => p.ordinal === row.ordinal,
+            ),
             useActual =
               previous &&
               !row.isLocked &&
@@ -260,6 +252,19 @@ export async function decideRecommendation(
             );
           const baseWeight = useActual ? previous.weightKg : row.weightKg,
             baseReps = useActual ? previous.reps : row.reps;
+          if (
+            previous &&
+            !row.isLocked &&
+            exercise?.autoProgression !== false &&
+            ((history.elapsedDays !== null &&
+              history.elapsedDays < 10 &&
+              target.weightKg < previous.weightKg - 0.000001) ||
+              (target.weightKg <= previous.weightKg + 0.000001 &&
+                target.reps < previous.reps))
+          )
+            throw Error("前回実績を下回る提案のため、端末内の目標を維持します");
+          const increase =
+            target.weightKg > baseWeight + 0.000001 || target.reps > baseReps;
           if (
             increase &&
             ((sleepHours !== null && sleepHours < 6) ||

@@ -1,10 +1,10 @@
 import { type AppDB, demoDb, meta, save } from "./db";
 import { localDate, type Entities } from "./model";
-import { comparison, sessionDay } from "./training";
+import { comparison } from "./training";
 import { effectiveSleepHours } from "./health";
 import { fatigueForMuscle, sorenessForMuscle } from "./wellness";
 import { aiRequestSchema, validateAiReply } from "./ai-contract";
-import { AI_ENDPOINT, hasAiConsent, aiToken, useAI } from "./ai-auth";
+import { fetchAdvice, hasAiConsent, aiToken, useAI } from "./ai-auth";
 import { decideRecommendation } from "./recommendations";
 const flights = new Map<string, Promise<boolean>>();
 export async function buildAIInput(db: AppDB, id: string) {
@@ -62,7 +62,7 @@ export async function buildAIInput(db: AppDB, id: string) {
         d.sets,
         e.exerciseId,
         e.equipmentId,
-        new Date(),
+        new Date(session.startedAt),
         id,
       ),
       locked =
@@ -74,16 +74,10 @@ export async function buildAIInput(db: AppDB, id: string) {
         name: e.name.slice(0, 80),
         muscle: e.muscle.slice(0, 40),
         locked,
-        elapsedDays: history.previous
-          ? Math.max(
-              0,
-              (Date.parse(day + "T12:00:00Z") -
-                Date.parse(sessionDay(history.previous) + "T12:00:00Z")) /
-                86400000,
-            )
-          : null,
+        elapsedDays: history.elapsedDays,
         targets: current.map((r) => ({
           setId: r.id,
+          ordinal: r.ordinal,
           weightKg: r.weightKg,
           reps: r.reps,
           targetRir: r.targetRir ?? null,
@@ -142,18 +136,7 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
       if (!hasAiConsent()) return false;
       const body = JSON.stringify(snapshot.input);
       if (new TextEncoder().encode(body).length > 32768) throw Error();
-      const response = await fetch(AI_ENDPOINT + "/advice", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-        body,
-        signal: AbortSignal.timeout(15000),
-        credentials: "omit",
-      });
-      if (!response.ok) throw Error("request failed");
-      const raw = await response.json();
+      const raw = await fetchAdvice(body, token);
       if (
         raw.model !== "@cf/google/gemma-4-26b-a4b-it" ||
         raw.modelVersion !== "1.0"

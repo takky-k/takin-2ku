@@ -8,7 +8,11 @@ import {
 } from "./start-targets";
 import { emptyWellness, saveWellness, plannedMuscles } from "./wellness";
 import { startWorkout, finishWorkout } from "./training";
-import { generateRecommendations } from "./recommendations";
+import {
+  generateRecommendations,
+  decideRecommendation,
+} from "./recommendations";
+import { localDate } from "./model";
 const opened: AppDB[] = [];
 afterEach(async () => {
   for (const db of opened.splice(0)) await db.delete();
@@ -136,6 +140,47 @@ it("uses latest actuals directly and ignores unrelated back fatigue on a chest d
   expect(r.proposedTargets![0].reps).toBe(8);
   expect(r.rationale).toContain("疲労");
 });
+it.each([9, 10])(
+  "protects actual reps and applies the weight floor at %i days",
+  async (days) => {
+    const { db, b } = await setup();
+    const old = await startWorkout(db, b, "kg");
+    const row = (await db.sets.where("sessionId").equals(old).toArray()).find(
+      (r) => !r.isLocked,
+    )!;
+    await save(
+      db,
+      "sets",
+      revised({
+        ...row,
+        completedAt: new Date().toISOString(),
+        weightKg: row.weightKg + 5,
+        reps: row.reps + 4,
+      }),
+    );
+    const date = new Date();
+    date.setDate(date.getDate() - days);
+    await finishWorkout(db, old, localDate(date));
+    await ready(db, b, {
+      [(await db.exercises.get(row.exerciseId))!.muscle]: 5,
+    });
+    const id = await prepareWorkout(db, b, "kg");
+    const next = (await db.sets.where("sessionId").equals(id).toArray()).find(
+      (r) => r.exerciseId === row.exerciseId && r.ordinal === row.ordinal,
+    )!;
+    expect(next.weightKg).toBe(row.weightKg + (days < 10 ? 5 : 0));
+    expect(next.reps).toBe(row.reps + 4);
+    const rec = (await generateRecommendations(db, id)).find(
+      (r) => r.exerciseId === row.exerciseId,
+    )!;
+    const target = rec.proposedTargets!.find((t) => t.setId === next.id)!;
+    target.reps--;
+    await db.recommendations.put(rec);
+    await expect(decideRecommendation(db, rec.id, true)).rejects.toThrow(
+      "前回実績",
+    );
+  },
+);
 it("deduplicates simultaneous starts", async () => {
   const { db, a } = await setup();
   await ready(db, a);
