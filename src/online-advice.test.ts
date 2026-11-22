@@ -4,7 +4,7 @@ import { startWorkout } from "./training";
 import { finishWorkout } from "./training";
 import { emptyWellness, saveWellness } from "./wellness";
 import { prepareWorkout } from "./start-targets";
-import { applyOnlineAdvice, buildAIInput } from "./online-advice";
+import { applyOnlineAdvice, buildAIInput, limitNotes } from "./online-advice";
 import * as auth from "./ai-auth";
 import type { User } from "@firebase/auth";
 const opened: AppDB[] = [];
@@ -81,7 +81,27 @@ it("includes age, latest recorded weight and soreness while excluding identity a
     soreness: { 全身: 3 },
   });
 });
-it("includes every completed matching set note and recorded RIR in the AI input", async () => {
+it("keeps recent full notes within the byte budget and leaves workout targets and RIR intact", async () => {
+  const { db, id } = await setup();
+  const input = (await buildAIInput(db, id))!.input;
+  const target = structuredClone(input.exercises[0].targets);
+  input.exercises[0].setNotes = [
+    { daysAgo: 2, ordinal: 0, note: "肩に痛み" },
+    { daysAgo: 4, ordinal: 1, note: "長".repeat(5000) },
+    { daysAgo: 8, ordinal: 2, note: "問題なし" },
+    { daysAgo: 31, ordinal: 0, note: "古い記録" },
+  ];
+  limitNotes(input);
+  expect(input.exercises[0].setNotes?.map((n) => n.note)).toEqual([
+    "肩に痛み",
+    "問題なし",
+  ]);
+  expect(input.exercises[0].targets).toEqual(target);
+  expect(
+    new TextEncoder().encode(JSON.stringify(input)).length,
+  ).toBeLessThanOrEqual(30000);
+});
+it("includes a completed matching set note and recorded RIR in the AI input", async () => {
   const { db, id } = await setup();
   const oldRows = await db.sets.where("sessionId").equals(id).toArray();
   const first = oldRows[0];

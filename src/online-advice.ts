@@ -18,6 +18,34 @@ import {
   generateRecommendations,
 } from "./recommendations";
 const flights = new Map<string, Promise<boolean>>();
+const maxRequestBytes = 30000;
+const maxNoteBytes = 12000;
+
+export function limitNotes(input: ReturnType<typeof aiRequestSchema.parse>) {
+  const encoder = new TextEncoder();
+  const bytes = () => encoder.encode(JSON.stringify(input)).length;
+  const candidates = input.exercises
+    .flatMap((exercise, index) =>
+      (exercise.setNotes ?? [])
+        .filter((note) => note.daysAgo <= 30)
+        .map((note) => ({ exercise, index, note })),
+    )
+    .sort(
+      (a, b) =>
+        a.note.daysAgo - b.note.daysAgo ||
+        a.index - b.index ||
+        a.note.ordinal - b.note.ordinal,
+    );
+  for (const exercise of input.exercises) exercise.setNotes = [];
+  const baseBytes = bytes();
+  for (const { exercise, note } of candidates) {
+    // Include complete notes only, so the AI never sees a misleading fragment.
+    exercise.setNotes!.push(note);
+    if (bytes() > Math.min(maxRequestBytes, baseBytes + maxNoteBytes))
+      exercise.setNotes!.pop();
+  }
+  return input;
+}
 export async function buildAIInput(db: AppDB, id: string) {
   const d = await db.transaction(
     "r",
@@ -167,37 +195,39 @@ export async function buildAIInput(db: AppDB, id: string) {
     ];
   });
   if (!exercises.length) return null;
-  const input = aiRequestSchema.parse({
-    version: 1,
-    sessionId: id,
-    profile:
-      d.profile && !d.profile.deletedAt
-        ? {
-            age: d.profile.age ?? null,
-            bodyWeightKg:
-              d.wellness
-                .filter(
-                  (w) =>
-                    !w.deletedAt &&
-                    w.dateLocal <= day &&
-                    w.bodyWeightKg !== null,
-                )
-                .sort(
-                  (a, b) =>
-                    b.dateLocal.localeCompare(a.dateLocal) ||
-                    b.updatedAt.localeCompare(a.updatedAt),
-                )[0]?.bodyWeightKg ?? null,
-            targetWeightKg: d.profile.targetWeightKg,
-            goal: d.profile.goal.slice(0, 80),
-            targetDaysPerWeek: d.profile.targetDaysPerWeek,
-            priorityMuscles: d.profile.priorityMuscles
-              .slice(0, 20)
-              .map((m) => m.slice(0, 40)),
-          }
-        : undefined,
-    condition,
-    exercises,
-  });
+  const input = limitNotes(
+    aiRequestSchema.parse({
+      version: 1,
+      sessionId: id,
+      profile:
+        d.profile && !d.profile.deletedAt
+          ? {
+              age: d.profile.age ?? null,
+              bodyWeightKg:
+                d.wellness
+                  .filter(
+                    (w) =>
+                      !w.deletedAt &&
+                      w.dateLocal <= day &&
+                      w.bodyWeightKg !== null,
+                  )
+                  .sort(
+                    (a, b) =>
+                      b.dateLocal.localeCompare(a.dateLocal) ||
+                      b.updatedAt.localeCompare(a.updatedAt),
+                  )[0]?.bodyWeightKg ?? null,
+              targetWeightKg: d.profile.targetWeightKg,
+              goal: d.profile.goal.slice(0, 80),
+              targetDaysPerWeek: d.profile.targetDaysPerWeek,
+              priorityMuscles: d.profile.priorityMuscles
+                .slice(0, 20)
+                .map((m) => m.slice(0, 40)),
+            }
+          : undefined,
+      condition,
+      exercises,
+    }),
+  );
   const evidence = d.sets
     .filter((r) => !r.deletedAt && r.completedAt && r.sessionId !== id)
     .map((r) => r.id);
