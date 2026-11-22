@@ -117,9 +117,10 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
           previous.reps >= 12 &&
           increment !== null &&
           increment <= Math.min(weightKg * 0.025, 2.5) + 0.000001
-        )
+        ) {
           weightKg = weightKg + increment;
-        else if (reps < 12) reps = Math.min(12, reps + 1);
+          reps = previous.reps - 1;
+        } else if (reps < 12) reps = Math.min(12, reps + 1);
       }
       return {
         setId: r.id,
@@ -141,7 +142,7 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
                 ? "保存済みの気分が低いため、今回は増加を見送る保守的な提案です。気分だけで性能を断定しません。"
                 : !evidence.length
                   ? "同じ種目・同じ機器の確定した実績が不足しています。機種間の重量換算を行わず予定を維持します。"
-                  : "直近の同じ機器の実績と実測RIRを参照。達成できたセットのみ小幅な回数向上を候補にします。重量刻みは履歴からの推定で、根拠が少なければ増量しません。";
+                  : "同じ機器の前回実績を基準にします。あと2回以上できたセットは、12回未満なら1回追加し、12回以上で小さな重量刻みを確認できた場合は1段階増やして1回減らします。";
     recommendations.push({
       ...meta(),
       sessionId: s.id,

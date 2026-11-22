@@ -181,6 +181,35 @@ it.each([9, 10])(
     );
   },
 );
+it("trades one rep for a confirmed small weight increment on a sufficiently easy set", async () => {
+  const { db, a } = await setup();
+  const old = await startWorkout(db, a, "kg");
+  const exerciseId = a.exercises[0].exerciseId;
+  const rows = (await db.sets.where("sessionId").equals(old).toArray()).filter(
+    (r) => r.exerciseId === exerciseId,
+  );
+  expect(rows.length).toBeGreaterThanOrEqual(3);
+  for (const r of rows) {
+    await save(
+      db,
+      "sets",
+      revised({
+        ...r,
+        completedAt: new Date().toISOString(),
+        weightKg: 100 + r.ordinal,
+        reps: 12,
+        rir: { min: 2, max: 2 },
+      }),
+    );
+  }
+  await finishWorkout(db, old);
+  await ready(db, a);
+  const id = await prepareWorkout(db, a, "kg");
+  const first = (await db.sets.where("sessionId").equals(id).toArray()).find(
+    (r) => r.exerciseId === exerciseId && r.ordinal === 0,
+  )!;
+  expect([first.weightKg, first.reps]).toEqual([101, 11]);
+});
 it("deduplicates simultaneous starts", async () => {
   const { db, a } = await setup();
   await ready(db, a);
