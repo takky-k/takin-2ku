@@ -1,8 +1,56 @@
 import { create } from "zustand";
 import type { Auth, User } from "@firebase/auth";
 import { validateAiReply } from "./ai-contract";
+import { hashInstallationKey } from "./ai-installation";
 export const AI_ENDPOINT = "https://takin-2ku-ai.tk-tk-tk-20020115.workers.dev";
+const installationKey = (uid: string) => "takin-ai-installation-v1:" + uid;
+function installationProof(uid?: string) {
+  try {
+    return uid ? localStorage.getItem(installationKey(uid)) : null;
+  } catch {
+    return null;
+  }
+}
+export function installationReady(uid?: string) {
+  return !!installationProof(uid);
+}
+function forgetInstallation(uid: string) {
+  localStorage.removeItem(installationKey(uid));
+  useAI.setState({ message: "AI連携用パスワードを入力してください。" });
+}
+export async function unlockInstallation(password: string) {
+  const user = useAI.getState().user;
+  if (!user) throw Error("Googleでログインしてください。");
+  const proof = await hashInstallationKey(password.trim());
+  const response = await fetch(AI_ENDPOINT + "/unlock", {
+    method: "POST",
+    credentials: "omit",
+    signal: AbortSignal.timeout(15000),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + (await user.getIdToken()),
+      "X-AI-Installation": proof,
+    },
+  });
+  if (response.status === 428) throw Error("AI連携用パスワードが違います。");
+  if (response.status === 429)
+    throw Error("しばらく待ってからもう一度入力してください。");
+  if (
+    !response.ok ||
+    (await response.json()).unlocked !== true ||
+    useAI.getState().user?.uid !== user.uid
+  )
+    throw Error("このGoogleアカウントの利用許可を確認できませんでした。");
+  localStorage.setItem(installationKey(user.uid), proof);
+  useAI.setState({
+    message: "この端末でAI連携を有効にしました。",
+    error: false,
+  });
+}
 export async function fetchAdvice(body: string, token: string) {
+  const uid = useAI.getState().user?.uid;
+  const proof = installationProof(uid);
+  if (!proof || !uid) throw Error("AI連携用パスワードを入力してください。");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {
@@ -11,12 +59,17 @@ export async function fetchAdvice(body: string, token: string) {
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
+        "X-AI-Installation": proof,
       },
       body,
       signal: controller.signal,
       credentials: "omit",
     });
     if (!response.ok) {
+      if (response.status === 428) {
+        forgetInstallation(uid);
+        throw Error("AI連携用パスワードを再入力してください。");
+      }
       const messages: Record<number, string> = {
         401: "Googleの認証を確認できません。再ログインしてください。",
         403: "このアカウントまたは接続元にはAIの利用許可がありません。",
@@ -139,6 +192,8 @@ export async function loginAI() {
   await authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
 }
 export async function logoutAI() {
+  const uid = useAI.getState().user?.uid;
+  if (uid) forgetInstallation(uid);
   setAiConsent(false);
   if (auth) await (await import("@firebase/auth")).signOut(auth);
 }

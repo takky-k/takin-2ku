@@ -11,6 +11,7 @@ import {
   useAI,
   consentKey,
   initAIAuth,
+  installationReady,
 } from "./ai-auth";
 import {
   decideRecommendation,
@@ -200,6 +201,7 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
   if (!useAI.getState().user || !hasAiConsent()) return false;
   const uid = useAI.getState().user!.uid,
     consentStamp = localStorage.getItem(consentKey);
+  if (!installationReady(uid)) return false;
   const key = db.name + id;
   if (flights.has(key)) return flights.get(key)!;
   const task = (async () => {

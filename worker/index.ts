@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
+import { hashInstallationKey } from "../src/ai-installation";
 import {
   aiRequestSchema,
   type AiRequest,
@@ -90,7 +91,14 @@ export async function verifyFirebaseToken(
     throw Error("invalid token");
   return payload;
 }
-export function makeWorker(verify = verifyFirebaseToken) {
+// Verifier of the high-entropy installation credential. The password and the
+// actual request credential are kept out of the bundle and repository.
+const installationVerifier =
+  "25af5317693548631fe15627008daac723bf7cf211f4d5d9f41243cdfcb74c51";
+export function makeWorker(
+  verify = verifyFirebaseToken,
+  verifier = installationVerifier,
+) {
   return {
     async fetch(request: Request, env: Env): Promise<Response> {
       const origin = request.headers.get("Origin"),
@@ -103,7 +111,8 @@ export function makeWorker(verify = verifyFirebaseToken) {
       };
       if (origin === allowed) {
         headers["Access-Control-Allow-Origin"] = allowed;
-        headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+        headers["Access-Control-Allow-Headers"] =
+          "Authorization, Content-Type, X-AI-Installation";
         headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
       }
       const json = (data: unknown, status = 200) =>
@@ -129,7 +138,10 @@ export function makeWorker(verify = verifyFirebaseToken) {
               apiKey: env.FIREBASE_API_KEY,
             })
           : json({ error: "not_configured" }, 503);
-      if (path !== "/advice" || request.method !== "POST")
+      if (
+        (path !== "/advice" && path !== "/unlock") ||
+        request.method !== "POST"
+      )
         return json({ error: "not_found" }, 404);
       if (!env.FIREBASE_PROJECT_ID || !env.ALLOWED_UID || !env.AI_RATE_LIMITER)
         return json({ error: "owner_setup_required" }, 503);
@@ -161,6 +173,17 @@ export function makeWorker(verify = verifyFirebaseToken) {
         return json({ error: "too_large" }, 413);
       let stage = "input";
       try {
+        stage = "limiter";
+        const limit = await env.AI_RATE_LIMITER.limit({ key: uid });
+        if (!limit.success) return json({ error: "rate_limited" }, 429);
+        const proof = request.headers.get("X-AI-Installation") ?? "";
+        if (
+          !/^[a-f0-9]{64}$/.test(proof) ||
+          (await hashInstallationKey(proof)) !== verifier
+        )
+          return json({ error: "installation_required" }, 428);
+        if (path === "/unlock") return json({ unlocked: true });
+        stage = "input";
         const reader = request.body?.getReader();
         if (!reader) return json({ error: "invalid_request" }, 400);
         const chunks: Uint8Array[] = [];
@@ -184,9 +207,6 @@ export function makeWorker(verify = verifyFirebaseToken) {
         const input = aiRequestSchema.parse(
           JSON.parse(new TextDecoder().decode(bytes)),
         );
-        stage = "limiter";
-        const limit = await env.AI_RATE_LIMITER.limit({ key: uid });
-        if (!limit.success) return json({ error: "rate_limited" }, 429);
         stage = "provider";
         const result = await env.AI.run(MODEL, {
           max_completion_tokens: 2000,

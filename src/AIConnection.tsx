@@ -6,10 +6,13 @@ import {
   setAiConsent,
   useAI,
   testAIConnection,
+  installationReady,
+  unlockInstallation,
 } from "./ai-auth";
 export function AIConnection() {
   const a = useAI(),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [unlocking, setUnlocking] = useState(false);
   useEffect(() => {
     if (a.consent) void initAIAuth();
   }, []);
@@ -38,7 +41,47 @@ export function AIConnection() {
             Googleログイン済み · UID: <code>{a.user.uid}</code>
           </p>
           <button onClick={() => void act(logoutAI)}>ログアウト</button>
-          <button disabled={a.busy} onClick={() => void testAIConnection()}>
+          {!installationReady(a.user.uid) && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                setUnlocking(true);
+                try {
+                  await unlockInstallation(
+                    String(new FormData(form).get("installation") ?? ""),
+                  );
+                  form.reset();
+                  setMessage("");
+                } catch (error) {
+                  setMessage(
+                    error instanceof Error
+                      ? error.message
+                      : "AI連携を有効にできませんでした。",
+                  );
+                } finally {
+                  setUnlocking(false);
+                }
+              }}
+            >
+              <label>
+                AI連携用パスワード
+                <input
+                  type="password"
+                  name="installation"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <button disabled={unlocking}>
+                {unlocking ? "確認中…" : "この端末でAIを有効にする"}
+              </button>
+            </form>
+          )}
+          <button
+            disabled={a.busy || !installationReady(a.user.uid)}
+            onClick={() => void testAIConnection()}
+          >
             AI接続をテスト
           </button>
         </>

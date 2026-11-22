@@ -23,6 +23,10 @@ async function setup() {
   return { db, id };
 }
 function enable() {
+  localStorage.setItem(
+    "takin-ai-installation-v1:synthetic-owner",
+    "a".repeat(64),
+  );
   auth.setAiConsent(true);
   auth.useAI.setState({ ready: true });
   auth.useAI.setState({ user: { uid: "synthetic-owner" } as User });
@@ -159,7 +163,35 @@ it("falls back without overwriting sets for bad AI output, lost consent or edite
     else expect((await db.sets.get(before[0].id))?.notes).toBe("入力済み");
   }
 });
+it("remembers a successful installation only for its owner and sends no health data during unlock", async () => {
+  auth.useAI.setState({
+    user: {
+      uid: "test-owner",
+      getIdToken: async () => "synthetic",
+    } as unknown as User,
+  });
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 428 }))
+    .mockResolvedValueOnce(Response.json({ unlocked: true }));
+  vi.stubGlobal("fetch", fetcher);
+  await expect(auth.unlockInstallation("wrong")).rejects.toThrow("違います");
+  expect(auth.installationReady("test-owner")).toBe(false);
+  await auth.unlockInstallation("fictional-install-password");
+  expect(auth.installationReady("test-owner")).toBe(true);
+  expect(auth.installationReady("someone-else")).toBe(false);
+  const [url, options] = fetcher.mock.calls[1];
+  expect(url).toBe(auth.AI_ENDPOINT + "/unlock");
+  expect(options.body).toBeUndefined();
+  expect(options.headers["X-AI-Installation"]).toMatch(/^[a-f0-9]{64}$/);
+  await auth.logoutAI();
+  expect(auth.installationReady("test-owner")).toBe(false);
+});
 it("can test the connection with synthetic data without sending any personal workout data", async () => {
+  localStorage.setItem(
+    "takin-ai-installation-v1:synthetic-owner",
+    "a".repeat(64),
+  );
   auth.useAI.setState({
     user: {
       uid: "synthetic-owner",

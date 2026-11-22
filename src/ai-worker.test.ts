@@ -62,7 +62,10 @@ function setup(payload: Record<string, unknown> = {}) {
     AI: { run },
     AI_RATE_LIMITER: { limit },
   };
-  const worker = makeWorker(verify as typeof verifyFirebaseToken);
+  const worker = makeWorker(
+    verify as typeof verifyFirebaseToken,
+    "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+  );
   return { verify, run, limit, env, worker };
 }
 function request(
@@ -75,11 +78,28 @@ function request(
     headers: {
       Origin: origin,
       "Content-Type": "application/json",
+      "X-AI-Installation": "a".repeat(64),
       ...(token ? { Authorization: "Bearer " + token } : {}),
     },
     body: JSON.stringify(body),
   });
 }
+it("requires both the owner and installation credential on enrollment and inference", async () => {
+  const { worker, env, run } = setup();
+  for (const path of ["unlock", "advice"]) {
+    for (const proof of ["", "b".repeat(64)]) {
+      const r = new Request("https://example.com/" + path, request());
+      r.headers.set("X-AI-Installation", proof);
+      expect((await worker.fetch(r, env)).status).toBe(428);
+    }
+  }
+  const accepted = await worker.fetch(
+    new Request("https://example.com/unlock", request()),
+    env,
+  );
+  expect(await accepted.json()).toEqual({ unlocked: true });
+  expect(run).not.toHaveBeenCalled();
+});
 it("rejects missing auth, different UID, unverified users, wrong provider and origin before AI", async () => {
   for (const payload of [
     { sub: "other" },
