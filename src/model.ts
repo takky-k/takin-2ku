@@ -212,6 +212,7 @@ export const healthSchema = metaSchema.extend({
 });
 export const profileSchema = metaSchema.extend({
   age: z.number().int().min(1).max(120).nullable().optional(),
+  heightCm: z.number().min(50).max(250).nullable().optional(),
   units: z.enum(["kg", "lb"]),
   goal: z.string(),
   targetDaysPerWeek: z.number().min(1).max(7),

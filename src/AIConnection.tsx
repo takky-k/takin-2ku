@@ -99,7 +99,7 @@ export function AIConnection() {
           checked={a.consent}
           onChange={(e) => setAiConsent(e.target.checked)}
         />
-        トレーニング履歴（種目・重量・回数・RIR・実施間隔・過去のセットメモ）、年齢・直近の体重・目標体重・トレーニング目標・週の目標回数・優先部位と、当日の睡眠時間・筋肉痛・気分・疲労・痛みの有無をCloudflare
+        トレーニング履歴（種目・重量・回数・RIR・実施間隔・過去のセットメモ）、年齢・身長・直近の体重・目標体重・トレーニング目標・週の目標回数・優先部位と、当日の睡眠時間・筋肉痛・気分・疲労・痛みの有無をCloudflare
         Workers AIへ送信することに同意する
       </label>
       <p className="hint">

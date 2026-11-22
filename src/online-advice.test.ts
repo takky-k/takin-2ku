@@ -69,11 +69,15 @@ it("includes age, latest recorded weight and soreness while excluding identity a
     sleepHours: 5.5,
     explicitInputFlags: { sleepHours: true },
   });
-  await db.profiles.update("main", { age: 31 });
+  await db.profiles.update("main", { age: 31, heightCm: 176 });
   const result = await buildAIInput(db, id),
     text = JSON.stringify(result!.input);
   expect(text).not.toContain("PRIVATE SESSION NOTE");
-  expect(result!.input.profile).toMatchObject({ age: 31, bodyWeightKg: 73 });
+  expect(result!.input.profile).toMatchObject({
+    age: 31,
+    heightCm: 176,
+    bodyWeightKg: 73,
+  });
   expect(text).not.toContain("email");
   expect(text).not.toContain("notes");
   expect(result!.input.condition).toMatchObject({
@@ -87,7 +91,7 @@ it("keeps recent full notes within the byte budget and leaves workout targets an
   const target = structuredClone(input.exercises[0].targets);
   input.exercises[0].setNotes = [
     { daysAgo: 2, ordinal: 0, note: "肩に痛み" },
-    { daysAgo: 4, ordinal: 1, note: "長".repeat(5000) },
+    { daysAgo: 4, ordinal: 1, note: "長".repeat(10000) },
     { daysAgo: 8, ordinal: 2, note: "問題なし" },
     { daysAgo: 31, ordinal: 0, note: "古い記録" },
   ];
@@ -99,7 +103,7 @@ it("keeps recent full notes within the byte budget and leaves workout targets an
   expect(input.exercises[0].targets).toEqual(target);
   expect(
     new TextEncoder().encode(JSON.stringify(input)).length,
-  ).toBeLessThanOrEqual(12000);
+  ).toBeLessThanOrEqual(30000);
 });
 it("includes a completed matching set note and recorded RIR in the AI input", async () => {
   const { db, id } = await setup();

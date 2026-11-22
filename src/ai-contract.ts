@@ -21,6 +21,7 @@ export const aiRequestSchema = z
     profile: z
       .object({
         age: z.number().int().min(1).max(120).nullable(),
+        heightCm: z.number().min(50).max(250).nullable().optional(),
         bodyWeightKg: z.number().positive().nullable(),
         targetWeightKg: z.number().positive().nullable(),
         goal: z.string().max(80),

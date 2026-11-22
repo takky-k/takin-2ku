@@ -18,9 +18,9 @@ import {
   generateRecommendations,
 } from "./recommendations";
 const flights = new Map<string, Promise<boolean>>();
-// Keep the request modest while retaining room for recent notes.
-const maxRequestBytes = 12000;
-const maxNoteBytes = 4000;
+// Leave a margin below the Worker's 32 KiB request limit.
+const maxRequestBytes = 30000;
+const maxNoteBytes = 24000;
 
 export function limitNotes(input: ReturnType<typeof aiRequestSchema.parse>) {
   const encoder = new TextEncoder();
@@ -204,6 +204,7 @@ export async function buildAIInput(db: AppDB, id: string) {
         d.profile && !d.profile.deletedAt
           ? {
               age: d.profile.age ?? null,
+              heightCm: d.profile.heightCm ?? null,
               bodyWeightKg:
                 d.wellness
                   .filter(

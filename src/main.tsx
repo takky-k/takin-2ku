@@ -1174,6 +1174,26 @@ function Settings({ storage }: { storage: string }) {
       <section className="card">
         <h2>トレーニング設定</h2>
         <label>
+          身長（cm）
+          <input
+            type="number"
+            min="50"
+            max="250"
+            step="0.1"
+            inputMode="decimal"
+            key={database.name + ":height:" + (p.heightCm ?? "")}
+            defaultValue={p.heightCm ?? ""}
+            onBlur={(e) => {
+              const input = e.currentTarget;
+              if (input.reportValidity()) {
+                const heightCm =
+                  input.value === "" ? null : input.valueAsNumber;
+                if (heightCm !== (p.heightCm ?? null)) update({ heightCm });
+              }
+            }}
+          />
+        </label>
+        <label>
           年齢（歳）
           <input
             type="number"
