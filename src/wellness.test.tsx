@@ -16,29 +16,32 @@ import {
 } from "./wellness";
 import { importHealth } from "./health";
 const opened: AppDB[] = [];
-it("saves, restores and clears manual sleep including zero, half hours and 12 hours", async () => {
+it("saves, restores and clears the seven manual sleep choices", async () => {
   const db = fresh();
   const view = render(<WellnessForm database={db} unit="kg" health={[]} />);
   const slider = screen.getByRole("slider", { name: "睡眠時間" });
-  expect(slider).toHaveAttribute("min", "0");
-  expect(slider).toHaveAttribute("max", "12");
+  expect(slider).toHaveAttribute("min", "5");
+  expect(slider).toHaveAttribute("max", "8");
   expect(slider).toHaveAttribute("step", "0.5");
   expect(slider).toHaveAttribute("aria-valuetext", "未入力");
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await screen.findByText("保存しました");
   expect((await db.wellness.toArray())[0].sleepHours).toBeNull();
-  for (const value of [0, 7.5, 12]) {
+  for (const value of [5, 5.5, 6, 6.5, 7, 7.5, 8]) {
     fireEvent.change(slider, { target: { value: String(value) } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(async () =>
       expect((await db.wellness.toArray())[0].sleepHours).toBe(value),
     );
-    expect(slider).toHaveAttribute("aria-valuetext", `${value}時間`);
+    expect(slider).toHaveAttribute(
+      "aria-valuetext",
+      value === 5 ? "5時間以下" : value === 8 ? "8時間以上" : `${value}時間`,
+    );
   }
   const saved = (await db.wellness.toArray())[0];
   view.unmount();
   render(<WellnessForm database={db} unit="kg" health={[]} existing={saved} />);
-  expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveValue("12");
+  expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveValue("8");
   fireEvent.click(
     screen.getByRole("button", { name: "睡眠時間を未入力に戻す" }),
   );
@@ -48,6 +51,33 @@ it("saves, restores and clears manual sleep including zero, half hours and 12 ho
   );
   expect(await db.wellness.count()).toBe(1);
 });
+it.each([
+  [4, "5時間以下"],
+  [9, "8時間以上"],
+] as const)(
+  "keeps an existing %i-hour entry precise when saving another field",
+  async (hours, label) => {
+    const db = fresh();
+    const saved = await saveWellness(db, {
+      ...emptyWellness(null),
+      sleepHours: hours,
+      explicitInputFlags: { sleepHours: true },
+    });
+    render(
+      <WellnessForm database={db} unit="kg" health={[]} existing={saved} />,
+    );
+    expect(screen.getByRole("slider", { name: "睡眠時間" })).toHaveAttribute(
+      "aria-valuetext",
+      label,
+    );
+    fireEvent.change(screen.getByRole("slider", { name: "体調" }), {
+      target: { value: "4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText("保存しました");
+    expect((await db.wellness.get(saved.id))?.sleepHours).toBe(hours);
+  },
+);
 it("keeps manual sleep ahead of imported sleep until explicitly cleared", async () => {
   const db = fresh();
   const date = "2026-01-02";
@@ -74,11 +104,11 @@ it("keeps manual sleep ahead of imported sleep until explicitly cleared", async 
     />,
   );
   fireEvent.change(screen.getByRole("slider", { name: "睡眠時間" }), {
-    target: { value: "0" },
+    target: { value: "5" },
   });
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await screen.findByText("保存しました");
-  expect((await db.wellness.toArray())[0].sleepHours).toBe(0);
+  expect((await db.wellness.toArray())[0].sleepHours).toBe(5);
   fireEvent.click(
     screen.getByRole("button", { name: "睡眠時間を未入力に戻す" }),
   );

@@ -11,7 +11,7 @@ async function start(page: Page, key: string) {
   await expect(page.getByRole("slider")).toHaveCount(4);
   await expect(page.getByRole("slider", { name: "睡眠時間" })).toHaveAttribute(
     "max",
-    "12",
+    "8",
   );
   for (const slider of await page
     .getByRole("slider", { name: /の筋肉痛$/ })

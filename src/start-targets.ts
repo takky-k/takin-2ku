@@ -54,16 +54,7 @@ export async function startFromSavedCondition(
     profile = await db.profiles.get("main");
   if (!plan || plan.deletedAt || !plan.exercises.length || !profile)
     throw Error("メニューまたは設定を確認してください。");
-  const existing = await db.sessions
-    .where("status")
-    .anyOf("active", "paused")
-    .filter((s) => !s.deletedAt && s.planId === plan.id)
-    .first();
-  const id = await prepareWorkout(db, plan, profile.units);
-  if (existing?.id === id && existing.requiresTargetReview === false)
-    await refreshTargets(db, id);
-  await applyOnlineAdvice(db, id);
-  return id;
+  return prepareWorkout(db, plan, profile.units, true);
 }
 export async function refreshTargets(db: AppDB, id: string) {
   const session = await db.sessions.get(id);
@@ -72,6 +63,7 @@ export async function refreshTargets(db: AppDB, id: string) {
   await requireCondition(db, session.planId, [
     ...new Set(session.exercises.map((e) => e.muscle)),
   ]);
+  if (await applyOnlineAdvice(db, id)) return session.exercises.length;
   const recs = await generateRecommendations(db, id);
   await db.transaction(
     "rw",
@@ -97,12 +89,15 @@ export function prepareWorkout(
   db: AppDB,
   plan: Entities["plans"],
   unit: "kg" | "lb",
+  refreshExisting = false,
 ): Promise<string> {
   const existing = preparing.get(db.name);
   if (existing)
     return existing.planId === plan.id
       ? existing.task
-      : existing.task.then(() => prepareWorkout(db, plan, unit));
+      : existing.task.then(() =>
+          prepareWorkout(db, plan, unit, refreshExisting),
+        );
   const task = (async () => {
     await requireCondition(
       db,
@@ -112,74 +107,21 @@ export function prepareWorkout(
     const id = await startWorkout(db, plan, unit),
       session = await db.sessions.get(id);
     if (!session) throw Error("セッションがありません");
-    const rows = await db.sets
-      .where("sessionId")
-      .equals(id)
-      .filter((r) => !r.deletedAt)
-      .toArray();
-    if (session.requiresTargetReview === false) return id;
-    if (
-      rows.some(
-        (r) =>
-          r.completedAt ||
-          r.inputState?.repsTouched ||
-          r.inputState?.weightTouched ||
-          r.rirRaw,
-      )
-    ) {
-      await save(
-        db,
-        "sessions",
-        revised({ ...session, requiresTargetReview: false }),
-      );
+    if (session.requiresTargetReview === false) {
+      if (refreshExisting) await refreshTargets(db, id);
       return id;
     }
-    if (!session.requiresTargetReview)
+    await refreshTargets(db, id);
+    await db.transaction("rw", [db.sessions, db.queue], async () => {
+      const current = await db.sessions.get(id);
+      if (!current || current.deletedAt || current.status !== "active")
+        throw Error("メニューを選び直してください");
       await save(
         db,
         "sessions",
-        revised({ ...session, requiresTargetReview: true }),
+        revised({ ...current, requiresTargetReview: false }),
       );
-    await generateRecommendations(db, id);
-    await db.transaction(
-      "rw",
-      [
-        db.sessions,
-        db.sets,
-        db.recommendations,
-        db.wellness,
-        db.health,
-        db.exercises,
-        db.queue,
-      ],
-      async () => {
-        const current = await db.sessions.get(id);
-        if (!current || current.status !== "active" || current.deletedAt)
-          throw Error("メニューを選び直してください");
-        await requireCondition(db, plan.id, [
-          ...new Set(current.exercises.map((e) => e.muscle)),
-        ]);
-        const recs = (await db.recommendations.toArray()).filter(
-            (r) => !r.deletedAt && r.sessionId === id && r.status === "draft",
-          ),
-          latest = new Map<string, Entities["recommendations"]>();
-        for (const r of recs.sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt),
-        ))
-          latest.set(r.exerciseId, r);
-        if (latest.size !== current.exercises.length)
-          throw Error(
-            "目標を準備できませんでした。メニューを選び直してください",
-          );
-        for (const r of latest.values())
-          await decideRecommendation(db, r.id, true);
-        await save(
-          db,
-          "sessions",
-          revised({ ...current, requiresTargetReview: false }),
-        );
-      },
-    );
+    });
     return id;
   })().finally(() => {
     if (preparing.get(db.name)?.task === task) preparing.delete(db.name);

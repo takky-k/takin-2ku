@@ -152,6 +152,7 @@ export const wellnessSchema = metaSchema.extend({
   sessionId: z.string().nullable(),
   dateLocal: z.string(),
   sleepHours: z.number().min(0).max(24).nullable(),
+  sleepRange: z.enum(["atMost5", "atLeast8"]).nullable().optional(),
   mood: z.number().min(1).max(5).nullable(),
   fatigue: z.number().min(1).max(5).nullable(),
   plannedPlanId: z.string().nullable().optional(),
@@ -210,6 +211,7 @@ export const healthSchema = metaSchema.extend({
   externalId: z.string().optional(),
 });
 export const profileSchema = metaSchema.extend({
+  age: z.number().int().min(1).max(120).nullable().optional(),
   units: z.enum(["kg", "lb"]),
   goal: z.string(),
   targetDaysPerWeek: z.number().min(1).max(7),

@@ -31,7 +31,11 @@ export function largeReduction(
       (oldReps > 0 && newReps < oldReps * 0.8),
   };
 }
-export async function generateRecommendations(db: AppDB, sessionId: string) {
+export async function generateRecommendations(
+  db: AppDB,
+  sessionId: string,
+  persist = true,
+) {
   const snapshot = await db.transaction(
     "r",
     [db.sessions, db.sets, db.exercises, db.wellness, db.health],
@@ -171,9 +175,10 @@ export async function generateRecommendations(db: AppDB, sessionId: string) {
       decisionAt: null,
     });
   }
-  await db.transaction("rw", [db.recommendations, db.queue], async () => {
-    for (const r of recommendations) await save(db, "recommendations", r);
-  });
+  if (persist)
+    await db.transaction("rw", [db.recommendations, db.queue], async () => {
+      for (const r of recommendations) await save(db, "recommendations", r);
+    });
   return recommendations;
 }
 export async function decideRecommendation(

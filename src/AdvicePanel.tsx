@@ -5,7 +5,6 @@ import type { AppDB } from "./db";
 import { refreshTargets } from "./start-targets";
 import { kgToDisplay, round, formatRir } from "./model";
 import { AIConnection } from "./AIConnection";
-import { applyOnlineAdvice } from "./online-advice";
 import { useAI } from "./ai-auth";
 export function AdvicePanel({ database }: { database: AppDB }) {
   const ai = useAI();
@@ -53,7 +52,7 @@ export function AdvicePanel({ database }: { database: AppDB }) {
         </span>
         <h2>今日の予定を確認する</h2>
         <p className="muted">
-          保存済みコンディションから安全な目標を再計算し、未入力のセットへ自動反映します。記録済みセットやマイメニューは変更しません。
+          コンディションを保存するかトレーニングを開始すると、未入力セットの重量と回数を自動設定します。
         </p>
         {active ? (
           <>
@@ -64,7 +63,6 @@ export function AdvicePanel({ database }: { database: AppDB }) {
               onClick={() =>
                 void perform(async () => {
                   await refreshTargets(database, active.id);
-                  await applyOnlineAdvice(database, active.id);
                 })
               }
             >

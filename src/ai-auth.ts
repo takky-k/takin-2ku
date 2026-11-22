@@ -38,7 +38,7 @@ export async function fetchAdvice(body: string, token: string) {
     clearTimeout(timer);
   }
 }
-const consentKey = "takin-ai-consent-v1";
+export const consentKey = "takin-ai-consent-v2";
 export function hasAiConsent() {
   try {
     return (
@@ -114,7 +114,8 @@ export async function initAIAuth() {
           error: false,
         }),
       );
-      useAI.setState({ ready: true, error: false });
+      await auth.authStateReady();
+      useAI.setState({ ready: true, user: auth.currentUser, error: false });
       try {
         localStorage.setItem("takin-ai-auth-enabled", "true");
       } catch {
@@ -181,6 +182,14 @@ export async function testAIConnection() {
     const input = {
       version: 1 as const,
       sessionId: "connection-test",
+      profile: {
+        age: 30,
+        bodyWeightKg: 70,
+        targetWeightKg: null,
+        goal: "筋力",
+        targetDaysPerWeek: 3,
+        priorityMuscles: [],
+      },
       condition: { sleepHours: null, mood: null, pain: false, fatigue: {} },
       exercises: [
         {
@@ -198,6 +207,7 @@ export async function testAIConnection() {
             },
           ],
           previous: [],
+          history: [],
         },
       ],
     };

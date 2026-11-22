@@ -1,6 +1,8 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { AppDB, seed, save, revised } from "./db";
 import { startWorkout } from "./training";
+import { emptyWellness, saveWellness } from "./wellness";
+import { prepareWorkout } from "./start-targets";
 import { applyOnlineAdvice, buildAIInput } from "./online-advice";
 import * as auth from "./ai-auth";
 import type { User } from "@firebase/auth";
@@ -22,6 +24,7 @@ async function setup() {
 }
 function enable() {
   auth.setAiConsent(true);
+  auth.useAI.setState({ ready: true });
   auth.useAI.setState({ user: { uid: "synthetic-owner" } as User });
   vi.spyOn(auth, "aiToken").mockResolvedValue("synthetic-token");
 }
@@ -42,10 +45,11 @@ it("never sends data without consent, a logged-in user, or while offline", async
   vi.stubGlobal("fetch", fetcher);
   expect(await applyOnlineAdvice(db, id)).toBe(false);
   auth.setAiConsent(true);
+  auth.useAI.setState({ ready: true, user: null });
   expect(await applyOnlineAdvice(db, id)).toBe(false);
   expect(fetcher).not.toHaveBeenCalled();
 });
-it("sends only a minimal summary, excluding body weight, names, notes and untouched RIR imputation", async () => {
+it("includes age, latest recorded weight and soreness while excluding identity and notes", async () => {
   const { db, id } = await setup(),
     session = (await db.sessions.get(id))!;
   await save(
@@ -53,14 +57,61 @@ it("sends only a minimal summary, excluding body weight, names, notes and untouc
     "sessions",
     revised({ ...session, notes: "PRIVATE SESSION NOTE" }),
   );
+  await saveWellness(db, {
+    ...emptyWellness(null),
+    bodyWeightKg: 73,
+    sorenessByMuscle: { 全身: 3 },
+    sleepHours: 5.5,
+    explicitInputFlags: { sleepHours: true },
+  });
+  await db.profiles.update("main", { age: 31 });
   const result = await buildAIInput(db, id),
     text = JSON.stringify(result!.input);
   expect(text).not.toContain("PRIVATE SESSION NOTE");
-  expect(text).not.toContain("bodyWeight");
+  expect(result!.input.profile).toMatchObject({ age: 31, bodyWeightKg: 73 });
   expect(text).not.toContain("email");
   expect(text).not.toContain("notes");
-  expect(result!.input.condition.sleepHours).toBeNull();
+  expect(result!.input.condition).toMatchObject({
+    sleepHours: 5.5,
+    soreness: { 全身: 3 },
+  });
 });
+it.each([true, false])(
+  "automatically applies only the selected source on start (AI available: %s)",
+  async (available) => {
+    const { db, id } = await setup();
+    const session = (await db.sessions.get(id))!;
+    const plan = (await db.plans.get(session.planId!))!;
+    await saveWellness(db, {
+      ...emptyWellness(null),
+      plannedPlanId: plan.id,
+      fatigueByMuscle: Object.fromEntries(
+        session.exercises.map((e) => [e.muscle, 1]),
+      ),
+    });
+    enable();
+    const snapshot = await buildAIInput(db, id);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        available
+          ? Response.json(response(snapshot))
+          : new Response(null, { status: 502 }),
+      ),
+    );
+    await prepareWorkout(db, plan, "lb", true);
+    const recs = await db.recommendations.toArray();
+    expect(recs.length).toBe(plan.exercises.length);
+    expect(
+      recs.every(
+        (r) =>
+          r.status === "accepted" &&
+          r.sourceModel ===
+            (available ? "cloudflare-workers-ai" : "local-rule"),
+      ),
+    ).toBe(true);
+  },
+);
 it("validates and atomically saves AI recommendations after consent and preserves local templates", async () => {
   const { db, id } = await setup();
   enable();

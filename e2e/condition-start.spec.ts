@@ -6,7 +6,7 @@ const card = (p: Page, key: string) =>
       exact: true,
     }),
   });
-test("manual sleep supports half hours, zero and offline restoration", async ({
+test("manual sleep supports grouped endpoints, half hours and offline restoration", async ({
   page,
   context,
 }) => {
@@ -14,7 +14,10 @@ test("manual sleep supports half hours, zero and offline restoration", async ({
   const slider = page.getByRole("slider", { name: "睡眠時間", exact: true });
   await expect(slider).toHaveAttribute("aria-valuetext", "未入力");
   await slider.press("Home");
-  for (let n = 0; n < 15; n++) await slider.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuetext", "5時間以下");
+  await slider.press("End");
+  await expect(slider).toHaveAttribute("aria-valuetext", "8時間以上");
+  await slider.press("ArrowLeft");
   await expect(slider).toHaveAttribute("aria-valuetext", "7.5時間");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.locator(".save-status")).toContainText(
@@ -32,7 +35,7 @@ test("manual sleep supports half hours, zero and offline restoration", async ({
     "コンディションは保存済みです",
   );
   await page.reload();
-  await expect(slider).toHaveAttribute("aria-valuetext", "0時間");
+  await expect(slider).toHaveAttribute("aria-valuetext", "5時間以下");
   await page.screenshot({
     path: ".npm-cache/sleep-slider.png",
     fullPage: true,

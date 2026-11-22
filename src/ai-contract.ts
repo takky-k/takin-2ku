@@ -18,12 +18,27 @@ export const aiRequestSchema = z
   .object({
     version: z.literal(1),
     sessionId: z.string().min(1).max(100),
+    profile: z
+      .object({
+        age: z.number().int().min(1).max(120).nullable(),
+        bodyWeightKg: z.number().positive().nullable(),
+        targetWeightKg: z.number().positive().nullable(),
+        goal: z.string().max(80),
+        targetDaysPerWeek: z.number().min(1).max(7),
+        priorityMuscles: z.array(z.string().max(40)).max(20),
+      })
+      .strict()
+      .optional(),
     condition: z
       .object({
         sleepHours: z.number().min(0).max(24).nullable(),
+        sleepRange: z.enum(["atMost5", "atLeast8"]).nullable().optional(),
         mood: z.number().int().min(1).max(5).nullable(),
         pain: z.boolean(),
         fatigue: z.record(z.string().max(40), z.number().min(0).max(5)),
+        soreness: z
+          .record(z.string().max(40), z.number().min(0).max(5))
+          .optional(),
       })
       .strict(),
     exercises: z
@@ -35,6 +50,19 @@ export const aiRequestSchema = z
             muscle: z.string().max(40),
             elapsedDays: z.number().min(0).nullable(),
             locked: z.boolean(),
+            history: z
+              .array(
+                z
+                  .object({
+                    daysAgo: z.number().int().nonnegative(),
+                    sets: z.number().int().positive(),
+                    totalReps: z.number().int().nonnegative(),
+                    topWeightKg: z.number().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .max(5)
+              .optional(),
             targets: z
               .array(
                 targetSchema.extend({
@@ -93,11 +121,17 @@ export function validateAiReply(request: AiRequest, raw: unknown): AiReply {
       const base = e.targets.find((b) => b.setId === t.setId);
       if (!base || ids.has(t.setId)) throw Error("セットが一致しません");
       ids.add(t.setId);
+      const previous = e.previous.find((p) => p.ordinal === base.ordinal);
+      const repeatsPrevious =
+        previous &&
+        previous.weightKg === t.weightKg &&
+        previous.reps === t.reps &&
+        t.weightKg < base.weightKg;
       // AI can choose a modest reduction, never exceed the local safe plan.
       if (
         t.weightKg > base.weightKg + 0.000001 ||
         t.weightKg < base.weightKg * 0.9 - 0.000001 ||
-        t.reps > base.reps ||
+        (t.reps > base.reps && !repeatsPrevious) ||
         t.reps < Math.max(0, base.reps - 2) ||
         t.targetRir?.min !== base.targetRir?.min ||
         t.targetRir?.max !== base.targetRir?.max

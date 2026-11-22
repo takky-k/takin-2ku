@@ -7,13 +7,18 @@ import { sleepLabel, useSleepState } from "./sleep-sync";
 import { readBodyWeightDraft, stageBodyWeight } from "./body-weight-draft";
 import { workoutSequence } from "./workout-sequence";
 import { sessionDay } from "./training";
+function sleepChoice(hours: number) {
+  if (hours <= 5) return "5時間以下";
+  if (hours >= 8) return "8時間以上";
+  return `${hours}時間`;
+}
 function Scale({
   label,
   value,
   min = 1,
   max = 5,
   step = 1,
-  unit = "",
+  formatValue = String,
   low,
   high,
   onChange,
@@ -23,11 +28,12 @@ function Scale({
   min?: number;
   max?: number;
   step?: number;
-  unit?: string;
-  low: string;
-  high: string;
+  formatValue?: (value: number) => string;
+  low?: string;
+  high?: string;
   onChange: (n: number | null) => void;
 }) {
+  const labelText = value === null ? "未入力" : formatValue(value);
   return (
     <div className={`condition-scale ${value === null ? "unset" : ""}`}>
       <div className="scale-label">
@@ -39,8 +45,12 @@ function Scale({
             min={min}
             max={max}
             step={step}
-            value={value ?? Math.round((min + max) / 2)}
-            aria-valuetext={value === null ? "未入力" : `${value}${unit}`}
+            value={
+              value === null
+                ? (min + max) / 2
+                : Math.max(min, Math.min(max, value))
+            }
+            aria-valuetext={labelText}
             onChange={(e) => onChange(Number(e.target.value))}
             onPointerUp={(e) => onChange(Number(e.currentTarget.value))}
             onKeyUp={(e) => {
@@ -58,17 +68,11 @@ function Scale({
             }}
           />
         </label>
-        <output aria-live="polite">
-          {value === null ? "未入力" : `${value}${unit}`}
-        </output>
+        <output aria-live="polite">{labelText}</output>
       </div>
       <div className="scale-endpoints">
-        <span>
-          {min}：{low}
-        </span>
-        <span>
-          {max}：{high}
-        </span>
+        <span>{low ? `${min}：${low}` : formatValue(min)}</span>
+        <span>{high ? `${max}：${high}` : formatValue(max)}</span>
       </div>
       {value !== null && (
         <button
@@ -261,16 +265,20 @@ export function WellnessForm({
           </div>
           <Scale
             label="睡眠時間"
-            min={0}
-            max={12}
+            min={5}
+            max={8}
             step={0.5}
-            unit="時間"
+            formatValue={sleepChoice}
             value={manualSleep ? draft.sleepHours : null}
-            low="睡眠なし"
-            high="12時間"
             onChange={(sleepHours) =>
               change({
                 sleepHours,
+                sleepRange:
+                  sleepHours === 5
+                    ? "atMost5"
+                    : sleepHours === 8
+                      ? "atLeast8"
+                      : null,
                 explicitInputFlags: {
                   ...draft.explicitInputFlags,
                   sleepHours: sleepHours !== null,

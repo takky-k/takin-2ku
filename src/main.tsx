@@ -60,7 +60,6 @@ import {
 } from "./training";
 import { AdvicePanel } from "./AdvicePanel";
 import { AIConnection } from "./AIConnection";
-import { applyOnlineAdvice } from "./online-advice";
 import { initAIAuth } from "./ai-auth";
 import { WellnessForm } from "./WellnessForm";
 import { SetTable } from "./SetTable";
@@ -377,14 +376,12 @@ function MyMenus() {
               onClick={() =>
                 run(async () => {
                   try {
-                    await prepareWorkout(database, p, data.profile!.units);
-                    const active = (await database.sessions.toArray()).find(
-                      (s) =>
-                        !s.deletedAt &&
-                        s.status === "active" &&
-                        s.planId === p.id,
+                    await prepareWorkout(
+                      database,
+                      p,
+                      data.profile!.units,
+                      true,
                     );
-                    if (active) await applyOnlineAdvice(database, active.id);
                     useUI.getState().setError("");
                     window.location.hash = "/workout/current";
                   } catch (e) {
@@ -1176,6 +1173,25 @@ function Settings({ storage }: { storage: string }) {
       <AIConnection />
       <section className="card">
         <h2>トレーニング設定</h2>
+        <label>
+          年齢（歳）
+          <input
+            type="number"
+            min="1"
+            max="120"
+            step="1"
+            inputMode="numeric"
+            key={database.name + ":" + (p.age ?? "")}
+            defaultValue={p.age ?? ""}
+            onBlur={(e) => {
+              const input = e.currentTarget;
+              if (input.reportValidity()) {
+                const age = input.value === "" ? null : input.valueAsNumber;
+                if (age !== (p.age ?? null)) update({ age });
+              }
+            }}
+          />
+        </label>
         <div className="filter">
           <label>
             表示単位

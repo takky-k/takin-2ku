@@ -1,22 +1,34 @@
 import { type AppDB, demoDb, meta, save } from "./db";
 import { localDate, type Entities } from "./model";
-import { comparison } from "./training";
+import { comparison, sessionDay } from "./training";
 import { effectiveSleepHours } from "./health";
 import { fatigueForMuscle, sorenessForMuscle } from "./wellness";
 import { aiRequestSchema, validateAiReply } from "./ai-contract";
-import { fetchAdvice, hasAiConsent, aiToken, useAI } from "./ai-auth";
-import { decideRecommendation } from "./recommendations";
+import {
+  fetchAdvice,
+  hasAiConsent,
+  aiToken,
+  useAI,
+  consentKey,
+  initAIAuth,
+} from "./ai-auth";
+import {
+  decideRecommendation,
+  generateRecommendations,
+} from "./recommendations";
 const flights = new Map<string, Promise<boolean>>();
 export async function buildAIInput(db: AppDB, id: string) {
   const d = await db.transaction(
     "r",
-    [db.sessions, db.sets, db.wellness, db.health, db.exercises],
+    [db.sessions, db.sets, db.wellness, db.health, db.exercises, db.profiles],
     async () => ({
       sessions: await db.sessions.toArray(),
       sets: await db.sets.toArray(),
       wellness: await db.wellness.toArray(),
       health: await db.health.toArray(),
       exercises: await db.exercises.toArray(),
+      profile: await db.profiles.get("main"),
+      candidates: await generateRecommendations(db, id, false),
     }),
   );
   const session = d.sessions.find(
@@ -29,8 +41,16 @@ export async function buildAIInput(db: AppDB, id: string) {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const condition = {
     sleepHours: effectiveSleepHours(d.health, logs, day),
+    sleepRange: logs.find((w) => w.sessionId === null)?.sleepRange ?? null,
     mood: logs.find((w) => w.mood !== null)?.mood ?? null,
     pain: logs.some((w) => w.painFlag),
+    soreness: Object.assign(
+      {},
+      ...logs
+        .filter((w) => w.sessionId === null)
+        .reverse()
+        .map((w) => w.sorenessByMuscle),
+    ),
     fatigue: Object.fromEntries(
       session.exercises.flatMap((e) => {
         const values = logs
@@ -52,6 +72,20 @@ export async function buildAIInput(db: AppDB, id: string) {
       !r.inputState?.repsTouched &&
       !r.rirRaw,
   );
+  const limits = new Map(
+    d.candidates.flatMap((rec) =>
+      (rec.proposedTargets ?? []).map((t) => [t.setId, t] as const),
+    ),
+  );
+  const past = d.sessions
+    .filter(
+      (s) => !s.deletedAt && s.status === "finished" && sessionDay(s) <= day,
+    )
+    .sort(
+      (a, b) =>
+        sessionDay(b).localeCompare(sessionDay(a)) ||
+        b.startedAt.localeCompare(a.startedAt),
+    );
   const exercises = session.exercises.flatMap((e) => {
     const current = rows
       .filter((r) => r.exerciseId === e.exerciseId)
@@ -75,11 +109,34 @@ export async function buildAIInput(db: AppDB, id: string) {
         muscle: e.muscle.slice(0, 40),
         locked,
         elapsedDays: history.elapsedDays,
+        history: past
+          .flatMap((s) => {
+            const sets = d.sets.filter(
+              (r) =>
+                !r.deletedAt &&
+                r.completedAt &&
+                r.sessionId === s.id &&
+                r.exerciseId === e.exerciseId &&
+                r.equipmentId === e.equipmentId,
+            );
+            return sets.length
+              ? [
+                  {
+                    daysAgo:
+                      (Date.parse(day) - Date.parse(sessionDay(s))) / 86400000,
+                    sets: sets.length,
+                    totalReps: sets.reduce((n, r) => n + r.reps, 0),
+                    topWeightKg: Math.max(...sets.map((r) => r.weightKg)),
+                  },
+                ]
+              : [];
+          })
+          .slice(0, 5),
         targets: current.map((r) => ({
           setId: r.id,
           ordinal: r.ordinal,
-          weightKg: r.weightKg,
-          reps: r.reps,
+          weightKg: limits.get(r.id)?.weightKg ?? r.weightKg,
+          reps: limits.get(r.id)?.reps ?? r.reps,
           targetRir: r.targetRir ?? null,
         })),
         previous: history.previousSets.slice(0, 20).map((r) => ({
@@ -95,6 +152,31 @@ export async function buildAIInput(db: AppDB, id: string) {
   const input = aiRequestSchema.parse({
     version: 1,
     sessionId: id,
+    profile:
+      d.profile && !d.profile.deletedAt
+        ? {
+            age: d.profile.age ?? null,
+            bodyWeightKg:
+              d.wellness
+                .filter(
+                  (w) =>
+                    !w.deletedAt &&
+                    w.dateLocal <= day &&
+                    w.bodyWeightKg !== null,
+                )
+                .sort(
+                  (a, b) =>
+                    b.dateLocal.localeCompare(a.dateLocal) ||
+                    b.updatedAt.localeCompare(a.updatedAt),
+                )[0]?.bodyWeightKg ?? null,
+            targetWeightKg: d.profile.targetWeightKg,
+            goal: d.profile.goal.slice(0, 80),
+            targetDaysPerWeek: d.profile.targetDaysPerWeek,
+            priorityMuscles: d.profile.priorityMuscles
+              .slice(0, 20)
+              .map((m) => m.slice(0, 40)),
+          }
+        : undefined,
     condition,
     exercises,
   });
@@ -106,21 +188,18 @@ export async function buildAIInput(db: AppDB, id: string) {
     session,
     rows,
     evidence,
+    profileRevision: d.profile?.revision,
     wellness: d.wellness.map((w) => [w.id, w.revision]),
     health: d.health.map((h) => [h.id, h.revision]),
     exerciseRevisions: d.exercises.map((e) => [e.id, e.revision]),
   };
 }
 export async function applyOnlineAdvice(db: AppDB, id: string) {
-  if (
-    db === demoDb ||
-    !hasAiConsent() ||
-    !useAI.getState().user ||
-    !navigator.onLine
-  )
-    return false;
+  if (db === demoDb || !hasAiConsent() || !navigator.onLine) return false;
+  if (!useAI.getState().user && !useAI.getState().ready) await initAIAuth();
+  if (!useAI.getState().user || !hasAiConsent()) return false;
   const uid = useAI.getState().user!.uid,
-    consentStamp = localStorage.getItem("takin-ai-consent-v1");
+    consentStamp = localStorage.getItem(consentKey);
   const key = db.name + id;
   if (flights.has(key)) return flights.get(key)!;
   const task = (async () => {
@@ -133,7 +212,12 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
       const snapshot = await buildAIInput(db, id);
       if (!snapshot) return false;
       const token = await aiToken();
-      if (!hasAiConsent()) return false;
+      if (
+        !hasAiConsent() ||
+        localStorage.getItem(consentKey) !== consentStamp ||
+        useAI.getState().user?.uid !== uid
+      )
+        return false;
       const body = JSON.stringify(snapshot.input);
       if (new TextEncoder().encode(body).length > 32768) throw Error();
       const raw = await fetchAdvice(body, token);
@@ -153,6 +237,7 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
           db.wellness,
           db.health,
           db.exercises,
+          db.profiles,
           db.recommendations,
           db.queue,
         ],
@@ -160,7 +245,9 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
           if (
             !hasAiConsent() ||
             useAI.getState().user?.uid !== uid ||
-            localStorage.getItem("takin-ai-consent-v1") !== consentStamp
+            localStorage.getItem(consentKey) !== consentStamp ||
+            (await db.profiles.get("main"))?.revision !==
+              snapshot.profileRevision
           )
             throw Error();
           const current = await db.sessions.get(id);
