@@ -110,6 +110,23 @@ export async function buildAIInput(db: AppDB, id: string) {
         muscle: e.muscle.slice(0, 40),
         locked,
         elapsedDays: history.elapsedDays,
+        setNotes: past.flatMap((s) =>
+          d.sets
+            .filter(
+              (r) =>
+                !r.deletedAt &&
+                r.completedAt &&
+                r.sessionId === s.id &&
+                r.exerciseId === e.exerciseId &&
+                r.equipmentId === e.equipmentId &&
+                r.notes.trim(),
+            )
+            .map((r) => ({
+              daysAgo: (Date.parse(day) - Date.parse(sessionDay(s))) / 86400000,
+              ordinal: r.ordinal,
+              note: r.notes,
+            })),
+        ),
         history: past
           .flatMap((s) => {
             const sets = d.sets.filter(
@@ -193,6 +210,9 @@ export async function buildAIInput(db: AppDB, id: string) {
     wellness: d.wellness.map((w) => [w.id, w.revision]),
     health: d.health.map((h) => [h.id, h.revision]),
     exerciseRevisions: d.exercises.map((e) => [e.id, e.revision]),
+    historyRevisions: d.sets
+      .filter((r) => !r.deletedAt && r.completedAt && r.sessionId !== id)
+      .map((r) => [r.id, r.revision]),
   };
 }
 export async function applyOnlineAdvice(db: AppDB, id: string) {
@@ -270,6 +290,14 @@ export async function applyOnlineAdvice(db: AppDB, id: string) {
             )
               throw Error();
           }
+          const historyRevisions = (await db.sets.toArray())
+            .filter((r) => !r.deletedAt && r.completedAt && r.sessionId !== id)
+            .map((r) => [r.id, r.revision]);
+          if (
+            JSON.stringify(historyRevisions) !==
+            JSON.stringify(snapshot.historyRevisions)
+          )
+            throw Error();
           for (const [table, expected] of [
             [db.wellness, snapshot.wellness],
             [db.health, snapshot.health],

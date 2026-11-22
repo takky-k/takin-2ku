@@ -1222,11 +1222,30 @@ function Settings({ storage }: { storage: string }) {
             value={p.goal}
             onChange={(e) => update({ goal: e.target.value })}
           >
-            {["筋肥大", "筋力", "一般"].map((v) => (
+            {["筋肥大", "筋肥大と減量", "筋力", "一般"].map((v) => (
               <option key={v}>{v}</option>
             ))}
           </select>
         </label>
+        <fieldset>
+          <legend>重点的に鍛えたい部位</legend>
+          {["背中", "胸", "肩"].map((muscle) => (
+            <label key={muscle}>
+              <input
+                type="checkbox"
+                checked={p.priorityMuscles.includes(muscle)}
+                onChange={(e) =>
+                  update({
+                    priorityMuscles: e.target.checked
+                      ? [...p.priorityMuscles, muscle]
+                      : p.priorityMuscles.filter((item) => item !== muscle),
+                  })
+                }
+              />
+              {muscle}
+            </label>
+          ))}
+        </fieldset>
         <label>
           週の目標回数
           <input

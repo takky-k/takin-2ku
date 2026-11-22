@@ -50,6 +50,17 @@ export const aiRequestSchema = z
             muscle: z.string().max(40),
             elapsedDays: z.number().min(0).nullable(),
             locked: z.boolean(),
+            setNotes: z
+              .array(
+                z
+                  .object({
+                    daysAgo: z.number().int().nonnegative(),
+                    ordinal: z.number().int().nonnegative(),
+                    note: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .optional(),
             history: z
               .array(
                 z

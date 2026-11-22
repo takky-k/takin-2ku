@@ -1,6 +1,7 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { AppDB, seed, save, revised } from "./db";
 import { startWorkout } from "./training";
+import { finishWorkout } from "./training";
 import { emptyWellness, saveWellness } from "./wellness";
 import { prepareWorkout } from "./start-targets";
 import { applyOnlineAdvice, buildAIInput } from "./online-advice";
@@ -78,6 +79,35 @@ it("includes age, latest recorded weight and soreness while excluding identity a
   expect(result!.input.condition).toMatchObject({
     sleepHours: 5.5,
     soreness: { 全身: 3 },
+  });
+});
+it("includes every completed matching set note and recorded RIR in the AI input", async () => {
+  const { db, id } = await setup();
+  const oldRows = await db.sets.where("sessionId").equals(id).toArray();
+  const first = oldRows[0];
+  await save(
+    db,
+    "sets",
+    revised({
+      ...first,
+      notes: "肩に痛み",
+      rir: { min: 1, max: 1 },
+      rirSource: "entered",
+      completedAt: new Date().toISOString(),
+    }),
+  );
+  await finishWorkout(db, id);
+  const plan = (await db.plans.toArray())[0];
+  const next = await startWorkout(db, plan, "lb");
+  const input = (await buildAIInput(db, next))!.input;
+  const e = input.exercises.find((e) => e.exerciseId === first.exerciseId)!;
+  expect(e.setNotes?.[0]).toMatchObject({
+    note: "肩に痛み",
+    ordinal: first.ordinal,
+  });
+  expect(e.previous.find((r) => r.ordinal === first.ordinal)?.rir).toEqual({
+    min: 1,
+    max: 1,
   });
 });
 it.each([true, false])(
