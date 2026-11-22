@@ -99,7 +99,7 @@ it("keeps recent full notes within the byte budget and leaves workout targets an
   expect(input.exercises[0].targets).toEqual(target);
   expect(
     new TextEncoder().encode(JSON.stringify(input)).length,
-  ).toBeLessThanOrEqual(30000);
+  ).toBeLessThanOrEqual(12000);
 });
 it("includes a completed matching set note and recorded RIR in the AI input", async () => {
   const { db, id } = await setup();

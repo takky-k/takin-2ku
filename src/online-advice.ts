@@ -18,8 +18,9 @@ import {
   generateRecommendations,
 } from "./recommendations";
 const flights = new Map<string, Promise<boolean>>();
-const maxRequestBytes = 30000;
-const maxNoteBytes = 12000;
+// Keep the request modest while retaining room for recent notes.
+const maxRequestBytes = 12000;
+const maxNoteBytes = 4000;
 
 export function limitNotes(input: ReturnType<typeof aiRequestSchema.parse>) {
   const encoder = new TextEncoder();

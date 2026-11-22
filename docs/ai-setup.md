@@ -6,6 +6,8 @@ GitHub Pagesはそのまま。Cloudflare Workers Free + Workers AIの無料枠�
 
 `npm run build:worker` で `.npm-cache/worker.js` を生成。Cloudflare Dashboardのtakin-2ku-aiのEdit codeへ貼付/Deployする。Wranglerを使う場合は `worker/wrangler.jsonc` とDashboardの設定を同期し、公開前に差分を確認する。CIはWorkerをビルド/テストするが、Workerへ自動公開しない。
 
+Workers AIの無料枠は全モデル合計で1日10,000 Neurons、UTC 0時に更新される。メモは直近30日以内で合計約4KB、入力全体は可能な限り12KB以内を目安にする。履歴と目標だけで12KBを超える場合は省略せず、Workerの32KB上限を超えれば端末内計算へ戻る。これらのバイト数はトークンやNeuronの厳密な上限ではない。出力は最大2,000トークン。利用量はWorkers AIのダッシュボードで確認する。
+
 必要なBindings:
 
 - Workers AI: `AI`
